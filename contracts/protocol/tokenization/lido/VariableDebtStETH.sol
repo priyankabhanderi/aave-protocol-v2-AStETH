@@ -7,6 +7,8 @@ import {Errors} from '../../libraries/helpers/Errors.sol';
 import {DebtTokenBase} from '../base/DebtTokenBase.sol';
 import {ISTETH} from '../../../interfaces/ISTETH.sol';
 import {IERC20} from '../../../dependencies/openzeppelin/contracts/IERC20.sol';
+import {IBookKeptBorrowing} from './AStETH.sol';
+
 //import {SignedSafeMath} from '../../../dependencies/openzeppelin/contracts/SignedSafeMath.sol';
 //import {UInt256Lib} from '../../../dependencies/uFragments/UInt256Lib.sol';
 
@@ -20,18 +22,21 @@ import {IERC20} from '../../../dependencies/openzeppelin/contracts/IERC20.sol';
   * fetchAMPLBorrowData() returns the total AMPL borrowed and the total scaled AMPL borrowed
   * fetchAMPLTotalSupply() fetches AMPL's current supply
 */
-contract AmplVariableDebtToken is DebtTokenBase, IVariableDebtToken {
+contract AmplVariableDebtToken is DebtTokenBase, IVariableDebtToken, IBookKeptBorrowing {
   using WadRayMath for uint256;
-//  using UInt256Lib for uint256;
-//  using SignedSafeMath for int256;
+  // TODO: add safe math for sign integer
+  //  using UInt256Lib for uint256;
+  //  using SignedSafeMath for int256;
 
   uint256 public constant DEBT_TOKEN_REVISION = 0x1;
 
   // ---------------------------------------------------------------------------
   // stETH additions
   // Keeps track of the shares borrowed from the AAVE system
-  uint256 private _totalSharesBorrowed;
+  // TODO: add safe math for sign integer
+  int256 private _totalSharesBorrowed;
   ISTETH private immutable STETH;
+
   // ---------------------------------------------------------------------------
 
   constructor(
@@ -163,11 +168,11 @@ contract AmplVariableDebtToken is DebtTokenBase, IVariableDebtToken {
 
   // ---------------------------------------------------------------------------
   // Custom methods for stETH
-  function getStETHBorrowData() external view returns (uint256, uint256) {
+  function getBorrowData() external view returns (uint256, int256) {
     return (super.totalSupply(), _totalSharesBorrowed);
   }
 
   function fetchStETHTotalSupply() internal view returns (uint256) {
-    return IERC20(UNDERLYING_ASSET_ADDRESS).totalSupply();
+    return STETH.totalSupply();
   }
 }
