@@ -123,8 +123,6 @@ contract AStETH is
     _underlyingAsset = underlyingAsset;
     _incentivesController = incentivesController;
 
-    initializeDebtToken();
-
     emit Initialized(
       underlyingAsset,
       address(pool),
@@ -137,7 +135,7 @@ contract AStETH is
     );
   }
 
-  function initializeDebtToken() internal {
+  function initializeDebtToken() external {
     DataTypes.ReserveData memory reserveData = _pool.getReserveData(_underlyingAsset);
     _variableDebtStETH = IBookKeptBorrowing(reserveData.variableDebtTokenAddress);
   }
@@ -339,6 +337,10 @@ contract AStETH is
    **/
   function UNDERLYING_ASSET_ADDRESS() public view override returns (address) {
     return _underlyingAsset;
+  }
+
+  function VARIABLE_DEBT_STETH_ADDRESS() public view returns (address) {
+    return address(_variableDebtStETH);
   }
 
   /**
