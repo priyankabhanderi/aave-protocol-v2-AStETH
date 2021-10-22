@@ -79,6 +79,7 @@ export enum eContractid {
   IERC20Detailed = 'IERC20Detailed',
   StableDebtToken = 'StableDebtToken',
   VariableDebtToken = 'VariableDebtToken',
+  VariableDebtStETHToken = 'VariableDebtStETHToken',
   FeeProvider = 'FeeProvider',
   TokenDistributor = 'TokenDistributor',
   StableAndVariableTokensHelper = 'StableAndVariableTokensHelper',

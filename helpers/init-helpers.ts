@@ -127,7 +127,7 @@ export const initReservesByHelper = async (
         poolName
       ),
       variableDebtTokenImpl: await getContractAddressWithJsonFallback(
-        eContractid.VariableDebtToken,
+        symbol == 'stETH' ? eContractid.VariableDebtStETHToken : eContractid.VariableDebtToken,
         poolName
       ),
       underlyingAssetDecimals: reserveDecimals,

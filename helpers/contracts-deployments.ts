@@ -53,6 +53,7 @@ import {
   WETHGatewayFactory,
   FlashLiquidationAdapterFactory,
   StETHMockFactory,
+  VariableDebtStETHFactory,
 } from '../types';
 import {
   withSaveAndVerify,
@@ -750,6 +751,17 @@ export const deployMockStETH = async (
   withSaveAndVerify(
     await new StETHMockFactory(await getFirstSigner()).deploy(),
     eContractid.StETHMock,
+    args,
+    verify
+  );
+
+export const deployVariableDebtStETHToken = async (
+  args: [tEthereumAddress, tEthereumAddress, string, string, tEthereumAddress],
+  verify: boolean
+) =>
+  withSaveAndVerify(
+    await new VariableDebtStETHFactory(await getFirstSigner()).deploy(),
+    eContractid.VariableDebtStETHToken,
     args,
     verify
   );
