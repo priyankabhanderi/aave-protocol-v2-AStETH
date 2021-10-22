@@ -12,7 +12,7 @@ import {
   eEthereumNetwork,
 } from './types';
 import { MintableERC20 } from '../types/MintableERC20';
-import { StETHMock } from '../types/StETHMock';
+import { StETHMocked } from '../types/StETHMocked';
 import { MockContract } from 'ethereum-waffle';
 import { ConfigNames, getReservesConfigByPool, loadPoolConfig } from './configuration';
 import { getFirstSigner } from './contracts-getters';
@@ -52,8 +52,9 @@ import {
   WETH9MockedFactory,
   WETHGatewayFactory,
   FlashLiquidationAdapterFactory,
-  StETHMockFactory,
+  StETHMockedFactory,
   VariableDebtStETHFactory,
+  AStETHFactory,
 } from '../types';
 import {
   withSaveAndVerify,
@@ -651,6 +652,8 @@ export const chooseATokenDeployment = (id: eContractid) => {
       return deployGenericATokenImpl;
     case eContractid.DelegationAwareAToken:
       return deployDelegationAwareATokenImpl;
+    case eContractid.AStETH:
+      return deployAStETHTokenImplementation;
     default:
       throw Error(`Missing aToken implementation deployment script for: ${id}`);
   }
@@ -663,6 +666,8 @@ export const deployATokenImplementations = async (
 ) => {
   const poolConfig = loadPoolConfig(pool);
   const network = <eNetwork>DRE.network.name;
+
+  console.log(reservesConfig);
 
   // Obtain the different AToken implementations of all reserves inside the Market config
   const aTokenImplementations = [
@@ -747,21 +752,27 @@ export const deployParaSwapLiquiditySwapAdapter = async (
 export const deployMockStETH = async (
   args: [string, string, string],
   verify?: boolean
-): Promise<StETHMock> =>
+): Promise<StETHMocked> =>
   withSaveAndVerify(
-    await new StETHMockFactory(await getFirstSigner()).deploy(),
-    eContractid.StETHMock,
+    await new StETHMockedFactory(await getFirstSigner()).deploy(),
+    eContractid.StETHMocked,
     args,
     verify
   );
 
-export const deployVariableDebtStETHToken = async (
-  args: [tEthereumAddress, tEthereumAddress, string, string, tEthereumAddress],
-  verify: boolean
-) =>
+export const deployVariableDebtStETHTokenImplementation = async (verify: boolean) =>
   withSaveAndVerify(
     await new VariableDebtStETHFactory(await getFirstSigner()).deploy(),
     eContractid.VariableDebtStETHToken,
-    args,
+    [],
     verify
   );
+
+export const deployAStETHTokenImplementation = async (verify: boolean) => {
+  return withSaveAndVerify(
+    await new AStETHFactory(await getFirstSigner()).deploy(),
+    eContractid.AStETH,
+    [],
+    verify
+  );
+};

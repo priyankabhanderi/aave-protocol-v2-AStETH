@@ -9,7 +9,7 @@ import {
   deployDefaultReserveInterestRateStrategy,
   deployStableDebtToken,
   deployVariableDebtToken,
-  deployVariableDebtStETHToken,
+  deployVariableDebtStETHTokenImplementation,
 } from './../../helpers/contracts-deployments';
 import { setDRE } from '../../helpers/misc-utils';
 import { ZERO_ADDRESS } from './../../helpers/constants';
@@ -62,16 +62,7 @@ WRONG RESERVE ASSET SETUP:
     let variableDebt;
     console.log('==========', symbol);
     if (symbol == 'stETH') {
-      variableDebt = await deployVariableDebtStETHToken(
-        [
-          poolAddress,
-          reserveAssetAddress,
-          ZERO_ADDRESS, // Incentives Controller
-          `Aave variable debt bearing ${symbol}`,
-          `variableDebt${symbol}`,
-        ],
-        verify
-      );
+      variableDebt = await deployVariableDebtStETHTokenImplementation(verify);
     } else {
       variableDebt = await deployVariableDebtToken(
         [

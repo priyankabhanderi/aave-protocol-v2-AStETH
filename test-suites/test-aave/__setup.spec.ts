@@ -33,7 +33,7 @@ import {
   deployATokenImplementations,
   deployAaveOracle,
   deployMockStETH,
-  deployVariableDebtStETHToken,
+  deployVariableDebtStETHTokenImplementation,
 } from '../../helpers/contracts-deployments';
 import { Signer } from 'ethers';
 import { TokenContractId, eContractid, tEthereumAddress, AavePools } from '../../helpers/types';
@@ -61,7 +61,7 @@ import {
   getPairsTokenAggregator,
 } from '../../helpers/contracts-getters';
 import { WETH9Mocked } from '../../types/WETH9Mocked';
-import { StETHMock } from '../../types';
+import { StETHMocked } from '../../types';
 
 const MOCK_USD_PRICE_IN_WEI = AaveConfig.ProtocolGlobalParams.MockUsdPriceInWei;
 const ALL_ASSETS_INITIAL_PRICES = AaveConfig.Mocks.AllAssetsInitialPrices;
@@ -267,7 +267,7 @@ const buildTestEnv = async (deployer: Signer, secondaryWallet: Signer) => {
   const testHelpers = await deployAaveProtocolDataProvider(addressesProvider.address);
 
   await deployATokenImplementations(ConfigNames.Aave, reservesParams, false);
-  await deployVariableDebtStETHToken(['', '', '', '', ''], false);
+  await deployVariableDebtStETHTokenImplementation(false);
 
   const admin = await deployer.getAddress();
 

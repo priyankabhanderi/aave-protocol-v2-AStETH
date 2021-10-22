@@ -273,6 +273,6 @@ export const strategyStETH: IReserveParams = {
   borrowingEnabled: false,
   stableBorrowRateEnabled: false,
   reserveDecimals: '18',
-  aTokenImpl: eContractid.AToken,
+  aTokenImpl: eContractid.AStETH,
   reserveFactor: '3500',
 };
