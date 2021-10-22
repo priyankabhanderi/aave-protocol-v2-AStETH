@@ -2,51 +2,59 @@
 pragma solidity 0.6.12;
 
 import {IVariableDebtToken} from '../../../interfaces/IVariableDebtToken.sol';
+import {IAaveIncentivesController} from '../../../interfaces/IAaveIncentivesController.sol';
 import {WadRayMath} from '../../libraries/math/WadRayMath.sol';
 import {Errors} from '../../libraries/helpers/Errors.sol';
 import {DebtTokenBase} from '../base/DebtTokenBase.sol';
 import {ISTETH} from '../../../interfaces/ISTETH.sol';
+import {ILendingPool} from '../../../interfaces/ILendingPool.sol';
 import {IERC20} from '../../../dependencies/openzeppelin/contracts/IERC20.sol';
-import {IBookKeptBorrowing} from './AStETH.sol';
-
-//import {SignedSafeMath} from '../../../dependencies/openzeppelin/contracts/SignedSafeMath.sol';
-//import {UInt256Lib} from '../../../dependencies/uFragments/UInt256Lib.sol';
+import {SafeMath} from '../../../dependencies/openzeppelin/contracts/SafeMath.sol';
+import {SignedSafeMath} from '../../../dependencies/openzeppelin/contracts/SignedSafeMath.sol';
 
 /*
   stETH specific VariableDebtStETH implementation.
-  The AmplVariableDebtToken doesn't alter any logic but performs some additional book-keeping.
+  The VariableDebtStETH doesn't alter any logic but performs some additional book-keeping.
 
   On mint and burn a private variable `_totalGonsBorrowed` keeps track of
-    the scaled AMPL principal borrowed.
+    the scaled stETH principal borrowed.
 
-  * fetchAMPLBorrowData() returns the total AMPL borrowed and the total scaled AMPL borrowed
-  * fetchAMPLTotalSupply() fetches AMPL's current supply
+  * fetchBorrowData() returns the total AMPL borrowed and the total scaled AMPL borrowed
+  * fetchTotalSupply() fetches AMPL's current supply
 */
-contract AmplVariableDebtToken is DebtTokenBase, IVariableDebtToken, IBookKeptBorrowing {
+contract VariableDebtStETH is DebtTokenBase, IVariableDebtToken {
   using WadRayMath for uint256;
-  // TODO: add safe math for sign integer
-  //  using UInt256Lib for uint256;
-  //  using SignedSafeMath for int256;
+  using SafeMath for uint256;
+  using SignedSafeMath for int256;
 
   uint256 public constant DEBT_TOKEN_REVISION = 0x1;
+
+  ILendingPool internal _pool;
+  address internal _underlyingAsset;
+  IAaveIncentivesController internal _incentivesController;
 
   // ---------------------------------------------------------------------------
   // stETH additions
   // Keeps track of the shares borrowed from the AAVE system
-  // TODO: add safe math for sign integer
   int256 private _totalSharesBorrowed;
-  ISTETH private immutable STETH;
 
   // ---------------------------------------------------------------------------
 
-  constructor(
-    address pool,
+  function initialize(
+    ILendingPool pool,
     address underlyingAsset,
-    string memory name,
-    string memory symbol,
-    address incentivesController
-  ) public DebtTokenBase(pool, underlyingAsset, name, symbol, incentivesController) {
-    STETH = ISTETH(underlyingAsset);
+    IAaveIncentivesController incentivesController,
+    uint8 debtTokenDecimals,
+    string memory debtTokenName,
+    string memory debtTokenSymbol,
+    bytes calldata params
+  ) public override initializer {
+    _underlyingAsset = underlyingAsset;
+    _pool = pool;
+    _incentivesController = incentivesController;
+    _setName(debtTokenName);
+    _setSymbol(debtTokenSymbol);
+    _setDecimals(debtTokenDecimals);
   }
 
   /**
@@ -68,7 +76,7 @@ contract AmplVariableDebtToken is DebtTokenBase, IVariableDebtToken, IBookKeptBo
       return 0;
     }
 
-    return scaledBalance.rayMul(POOL.getReserveNormalizedVariableDebt(UNDERLYING_ASSET_ADDRESS));
+    return scaledBalance.rayMul(_pool.getReserveNormalizedVariableDebt(_underlyingAsset));
   }
 
   /**
@@ -96,7 +104,9 @@ contract AmplVariableDebtToken is DebtTokenBase, IVariableDebtToken, IBookKeptBo
     require(amountScaled != 0, Errors.CT_INVALID_MINT_AMOUNT);
 
     _mint(onBehalfOf, amountScaled);
-    _totalSharesBorrowed = _totalSharesBorrowed.add(STETH.getSharesByPooledEth(amountScaled));
+    _totalSharesBorrowed = _totalSharesBorrowed.add(
+      int256(ISTETH(_underlyingAsset).getSharesByPooledEth(amountScaled))
+    );
 
     emit Transfer(address(0), onBehalfOf, amount);
     emit Mint(user, onBehalfOf, amount, index);
@@ -120,7 +130,9 @@ contract AmplVariableDebtToken is DebtTokenBase, IVariableDebtToken, IBookKeptBo
     require(amountScaled != 0, Errors.CT_INVALID_BURN_AMOUNT);
 
     _burn(user, amountScaled);
-    _totalSharesBorrowed = _totalSharesBorrowed.sub(STETH.getSharesByPooledEth(amountScaled));
+    _totalSharesBorrowed = _totalSharesBorrowed.sub(
+      int256(ISTETH(_underlyingAsset).getSharesByPooledEth(amountScaled))
+    );
 
     emit Transfer(user, address(0), amount);
     emit Burn(user, amount, index);
@@ -139,8 +151,7 @@ contract AmplVariableDebtToken is DebtTokenBase, IVariableDebtToken, IBookKeptBo
    * @return The total supply
    **/
   function totalSupply() public view virtual override returns (uint256) {
-    return
-      super.totalSupply().rayMul(POOL.getReserveNormalizedVariableDebt(UNDERLYING_ASSET_ADDRESS));
+    return super.totalSupply().rayMul(_pool.getReserveNormalizedVariableDebt(_underlyingAsset));
   }
 
   /**
@@ -173,6 +184,30 @@ contract AmplVariableDebtToken is DebtTokenBase, IVariableDebtToken, IBookKeptBo
   }
 
   function fetchStETHTotalSupply() internal view returns (uint256) {
-    return STETH.totalSupply();
+    return ISTETH(_underlyingAsset).totalSupply();
+  }
+
+  function _getLendingPool() internal view virtual override returns (ILendingPool) {
+    return _pool;
+  }
+
+  function POOL() public view returns (ILendingPool) {
+    return _pool;
+  }
+
+  function _getUnderlyingAssetAddress() internal view virtual override returns (address) {
+    return _underlyingAsset;
+  }
+
+  function UNDERLYING_ASSET_ADDRESS() public view returns (address) {
+    return _underlyingAsset;
+  }
+
+  function _getIncentivesController() internal view override returns (IAaveIncentivesController) {
+    return _incentivesController;
+  }
+
+  function getIncentivesController() external view override returns (IAaveIncentivesController) {
+    return _getIncentivesController();
   }
 }

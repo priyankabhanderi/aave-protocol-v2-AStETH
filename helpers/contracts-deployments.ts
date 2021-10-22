@@ -12,6 +12,7 @@ import {
   eEthereumNetwork,
 } from './types';
 import { MintableERC20 } from '../types/MintableERC20';
+import { StETHMock } from '../types/StETHMock';
 import { MockContract } from 'ethereum-waffle';
 import { ConfigNames, getReservesConfigByPool, loadPoolConfig } from './configuration';
 import { getFirstSigner } from './contracts-getters';
@@ -51,6 +52,8 @@ import {
   WETH9MockedFactory,
   WETHGatewayFactory,
   FlashLiquidationAdapterFactory,
+  StETHMockFactory,
+  VariableDebtStETHFactory,
 } from '../types';
 import {
   withSaveAndVerify,
@@ -737,6 +740,28 @@ export const deployParaSwapLiquiditySwapAdapter = async (
   withSaveAndVerify(
     await new ParaSwapLiquiditySwapAdapterFactory(await getFirstSigner()).deploy(...args),
     eContractid.ParaSwapLiquiditySwapAdapter,
+    args,
+    verify
+  );
+
+export const deployMockStETH = async (
+  args: [string, string, string],
+  verify?: boolean
+): Promise<StETHMock> =>
+  withSaveAndVerify(
+    await new StETHMockFactory(await getFirstSigner()).deploy(),
+    eContractid.StETHMock,
+    args,
+    verify
+  );
+
+export const deployVariableDebtStETHToken = async (
+  args: [tEthereumAddress, tEthereumAddress, string, string, tEthereumAddress],
+  verify: boolean
+) =>
+  withSaveAndVerify(
+    await new VariableDebtStETHFactory(await getFirstSigner()).deploy(),
+    eContractid.VariableDebtStETHToken,
     args,
     verify
   );
