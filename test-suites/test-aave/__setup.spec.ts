@@ -32,6 +32,8 @@ import {
   authorizeWETHGateway,
   deployATokenImplementations,
   deployAaveOracle,
+  deployMockStETH,
+  deployVariableDebtStETHToken,
 } from '../../helpers/contracts-deployments';
 import { Signer } from 'ethers';
 import { TokenContractId, eContractid, tEthereumAddress, AavePools } from '../../helpers/types';
@@ -59,6 +61,7 @@ import {
   getPairsTokenAggregator,
 } from '../../helpers/contracts-getters';
 import { WETH9Mocked } from '../../types/WETH9Mocked';
+import { StETHMock } from '../../types';
 
 const MOCK_USD_PRICE_IN_WEI = AaveConfig.ProtocolGlobalParams.MockUsdPriceInWei;
 const ALL_ASSETS_INITIAL_PRICES = AaveConfig.Mocks.AllAssetsInitialPrices;
@@ -84,11 +87,19 @@ const deployAllMockTokens = async (deployer: Signer) => {
       decimals = 18;
     }
 
-    tokens[tokenSymbol] = await deployMintableERC20([
-      tokenSymbol,
-      tokenSymbol,
-      configData ? configData.reserveDecimals : 18,
-    ]);
+    if (tokenSymbol === 'stETH') {
+      tokens[tokenSymbol] = await deployMockStETH([
+        tokenSymbol,
+        tokenSymbol,
+        configData ? configData.reserveDecimals : 18,
+      ]);
+    } else {
+      tokens[tokenSymbol] = await deployMintableERC20([
+        tokenSymbol,
+        tokenSymbol,
+        configData ? configData.reserveDecimals : 18,
+      ]);
+    }
     await registerContractInJsonDb(tokenSymbol.toUpperCase(), tokens[tokenSymbol]);
   }
 
@@ -101,7 +112,7 @@ const buildTestEnv = async (deployer: Signer, secondaryWallet: Signer) => {
   const config = loadPoolConfig(ConfigNames.Aave);
 
   const mockTokens: {
-    [symbol: string]: MockContract | MintableERC20 | WETH9Mocked;
+    [symbol: string]: MockContract | MintableERC20 | WETH9Mocked | StETHMock;
   } = {
     ...(await deployAllMockTokens(deployer)),
   };
@@ -198,6 +209,7 @@ const buildTestEnv = async (deployer: Signer, secondaryWallet: Signer) => {
       STAKE: mockTokens.STAKE.address,
       xSUSHI: mockTokens.xSUSHI.address,
       WAVAX: mockTokens.WAVAX.address,
+      stETH: mockTokens.stETH.address,
     },
     fallbackOracle
   );
@@ -255,6 +267,7 @@ const buildTestEnv = async (deployer: Signer, secondaryWallet: Signer) => {
   const testHelpers = await deployAaveProtocolDataProvider(addressesProvider.address);
 
   await deployATokenImplementations(ConfigNames.Aave, reservesParams, false);
+  await deployVariableDebtStETHToken(['', '', '', '', ''], false);
 
   const admin = await deployer.getAddress();
 
