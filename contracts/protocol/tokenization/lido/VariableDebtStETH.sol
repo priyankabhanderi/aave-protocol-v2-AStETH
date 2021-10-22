@@ -26,22 +26,19 @@ contract VariableDebtStETH is DebtTokenBase, IVariableDebtToken {
   using WadRayMath for uint256;
   using SafeMath for uint256;
   using SignedSafeMath for int256;
-  // TODO: add safe math for sign integer
-  //  using UInt256Lib for uint256;
-  //  using SignedSafeMath for int256;
 
   uint256 public constant DEBT_TOKEN_REVISION = 0x1;
+
+  ILendingPool internal _pool;
+  address internal _underlyingAsset;
+  IAaveIncentivesController internal _incentivesController;
 
   // ---------------------------------------------------------------------------
   // stETH additions
   // Keeps track of the shares borrowed from the AAVE system
-  // TODO: add safe math for sign integer
   int256 private _totalSharesBorrowed;
 
   // ---------------------------------------------------------------------------
-
-  ISTETH internal UNDERLYING_ASSET_ADDRESS;
-  ILendingPool internal POOL;
 
   function initialize(
     ILendingPool pool,
@@ -52,8 +49,9 @@ contract VariableDebtStETH is DebtTokenBase, IVariableDebtToken {
     string memory debtTokenSymbol,
     bytes calldata params
   ) public override initializer {
-    UNDERLYING_ASSET_ADDRESS = ISTETH(underlyingAsset);
-    POOL = pool;
+    _underlyingAsset = underlyingAsset;
+    _pool = pool;
+    _incentivesController = incentivesController;
     _setName(debtTokenName);
     _setSymbol(debtTokenSymbol);
     _setDecimals(debtTokenDecimals);
@@ -78,10 +76,7 @@ contract VariableDebtStETH is DebtTokenBase, IVariableDebtToken {
       return 0;
     }
 
-    return
-      scaledBalance.rayMul(
-        POOL.getReserveNormalizedVariableDebt(address(UNDERLYING_ASSET_ADDRESS))
-      );
+    return scaledBalance.rayMul(_pool.getReserveNormalizedVariableDebt(_underlyingAsset));
   }
 
   /**
@@ -110,7 +105,7 @@ contract VariableDebtStETH is DebtTokenBase, IVariableDebtToken {
 
     _mint(onBehalfOf, amountScaled);
     _totalSharesBorrowed = _totalSharesBorrowed.add(
-      int256(UNDERLYING_ASSET_ADDRESS.getSharesByPooledEth(amountScaled))
+      int256(ISTETH(_underlyingAsset).getSharesByPooledEth(amountScaled))
     );
 
     emit Transfer(address(0), onBehalfOf, amount);
@@ -136,7 +131,7 @@ contract VariableDebtStETH is DebtTokenBase, IVariableDebtToken {
 
     _burn(user, amountScaled);
     _totalSharesBorrowed = _totalSharesBorrowed.sub(
-      int256(UNDERLYING_ASSET_ADDRESS.getSharesByPooledEth(amountScaled))
+      int256(ISTETH(_underlyingAsset).getSharesByPooledEth(amountScaled))
     );
 
     emit Transfer(user, address(0), amount);
@@ -156,10 +151,7 @@ contract VariableDebtStETH is DebtTokenBase, IVariableDebtToken {
    * @return The total supply
    **/
   function totalSupply() public view virtual override returns (uint256) {
-    return
-      super.totalSupply().rayMul(
-        POOL.getReserveNormalizedVariableDebt(address(UNDERLYING_ASSET_ADDRESS))
-      );
+    return super.totalSupply().rayMul(_pool.getReserveNormalizedVariableDebt(_underlyingAsset));
   }
 
   /**
@@ -192,19 +184,27 @@ contract VariableDebtStETH is DebtTokenBase, IVariableDebtToken {
   }
 
   function fetchStETHTotalSupply() internal view returns (uint256) {
-    return UNDERLYING_ASSET_ADDRESS.totalSupply();
+    return ISTETH(_underlyingAsset).totalSupply();
   }
 
-  function _getUnderlyingAssetAddress() internal view override returns (address) {
-    return address(UNDERLYING_ASSET_ADDRESS);
+  function _getLendingPool() internal view virtual override returns (ILendingPool) {
+    return _pool;
   }
 
-  function _getLendingPool() internal view override returns (ILendingPool) {
-    return POOL;
+  function POOL() public view returns (ILendingPool) {
+    return _pool;
+  }
+
+  function _getUnderlyingAssetAddress() internal view virtual override returns (address) {
+    return _underlyingAsset;
+  }
+
+  function UNDERLYING_ASSET_ADDRESS() public view returns (address) {
+    return _underlyingAsset;
   }
 
   function _getIncentivesController() internal view override returns (IAaveIncentivesController) {
-    return IAaveIncentivesController(address(0));
+    return _incentivesController;
   }
 
   function getIncentivesController() external view override returns (IAaveIncentivesController) {
