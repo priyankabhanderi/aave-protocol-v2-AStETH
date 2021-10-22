@@ -1,4 +1,4 @@
-pragma solidity 0.6.12;
+pragma solidity 0.8.9;
 
 contract StETHMock {
   uint256 public decimals = 18;

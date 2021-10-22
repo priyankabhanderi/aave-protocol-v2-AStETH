@@ -80,6 +80,7 @@ export enum eContractid {
   StableDebtToken = 'StableDebtToken',
   VariableDebtToken = 'VariableDebtToken',
   VariableDebtStETHToken = 'VariableDebtStETHToken',
+  StETHMock = 'StETHMock',
   FeeProvider = 'FeeProvider',
   TokenDistributor = 'TokenDistributor',
   StableAndVariableTokensHelper = 'StableAndVariableTokensHelper',
