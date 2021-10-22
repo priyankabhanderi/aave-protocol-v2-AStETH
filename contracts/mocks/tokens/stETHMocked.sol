@@ -31,11 +31,29 @@ contract stETHMocked {
    * @param _sharesAmount Amount of shares to mint
    * @return The total amount of all holders' shares after new shares are minted
    */
-  function mintShares(address _to, uint256 _sharesAmount) external returns (uint256) {
+  function _mintShares(address _to, uint256 _sharesAmount) internal returns (uint256) {
     _shares[_to] = _shares[_to].add(_sharesAmount);
     _totalShares = _totalShares.add(_sharesAmount);
 
     return _totalShares;
+  }
+
+  function mint(address _to, uint256 amount) external returns (uint256) {
+    uint256 newTotalSupply = _totalSupply.add(amount);
+    if (_totalSupply != 0) {
+      amount = _getSharesByPooledEth(amount);
+    }
+    _totalSupply = newTotalSupply;
+
+    return _mintShares(_to, amount);
+  }
+
+  function rebase(uint256 addingAmount) external returns (uint256) {
+    if (_totalSupply != 0) {
+      _totalSupply = _totalSupply.add(addingAmount);
+    }
+
+    return _totalSupply;
   }
 
   function getTotalShares() external view returns (uint256) {
