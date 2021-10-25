@@ -577,8 +577,16 @@ contract AStETH is
     );
     uint256 otherBalanceScaledBefore = scaledTotalSupplyBefore.sub(userBalanceScaledBefore);
 
-    uint256 scaledTotalSupplyAfter = scaledTotalSupplyBefore.sub(burnAmountScaled);
-    uint256 userBalanceScaledAfter = userBalanceScaledBefore.sub(burnAmountScaled);
+    uint256 scaledTotalSupplyAfter = 0;
+    if (burnAmountScaled <= scaledTotalSupplyBefore) {
+      scaledTotalSupplyAfter = scaledTotalSupplyBefore.sub(burnAmountScaled);
+    }
+
+    uint256 userBalanceScaledAfter = 0;
+    if (burnAmountScaled <= userBalanceScaledBefore) {
+      userBalanceScaledAfter = userBalanceScaledBefore.sub(burnAmountScaled);
+    }
+
     uint256 burnAmountInternal = 0;
 
     // Lone user

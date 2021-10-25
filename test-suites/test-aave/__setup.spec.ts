@@ -34,6 +34,7 @@ import {
   deployAaveOracle,
   deployMockStETH,
   deployVariableDebtStETHTokenImplementation,
+  deployStableDebtStETHTokenImplementation,
 } from '../../helpers/contracts-deployments';
 import { Signer } from 'ethers';
 import { TokenContractId, eContractid, tEthereumAddress, AavePools } from '../../helpers/types';
@@ -268,6 +269,7 @@ const buildTestEnv = async (deployer: Signer, secondaryWallet: Signer) => {
 
   await deployATokenImplementations(ConfigNames.Aave, reservesParams, false);
   await deployVariableDebtStETHTokenImplementation(false);
+  await deployStableDebtStETHTokenImplementation(false);
 
   const admin = await deployer.getAddress();
 

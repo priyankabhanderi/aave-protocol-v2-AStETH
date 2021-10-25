@@ -36,6 +36,8 @@ import {
   StETHMockedFactory,
   AStETHFactory,
   VariableDebtStETHFactory,
+  StableDebtStETHFactory,
+  StableDebtToken,
 } from '../types';
 import { IERC20DetailedFactory } from '../types/IERC20DetailedFactory';
 import { getEthersSigners, MockTokenMap } from './contracts-helpers';
@@ -471,6 +473,15 @@ export const getVariableDebtStETH = async (address?: tEthereumAddress) =>
     address ||
       (
         await getDb().get(`${eContractid.VariableDebtStETHToken}.${DRE.network.name}`).value()
+      ).address,
+    await getFirstSigner()
+  );
+
+export const getStableDebtStETH = async (address?: tEthereumAddress) =>
+  await StableDebtStETHFactory.connect(
+    address ||
+      (
+        await getDb().get(`${eContractid.StableDebtStETHToken}.${DRE.network.name}`).value()
       ).address,
     await getFirstSigner()
   );
