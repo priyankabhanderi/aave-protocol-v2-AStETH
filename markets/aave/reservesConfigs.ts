@@ -265,13 +265,13 @@ export const strategyXSUSHI: IReserveParams = {
   reserveFactor: '3500',
 };
 
-export const strategyStETH: IReserveParams = {
+export let strategyStETH: IReserveParams = {
   strategy: rateStrategyVolatileFour,
   baseLTVAsCollateral: '2500',
   liquidationThreshold: '4500',
   liquidationBonus: '11500',
-  borrowingEnabled: true,
-  stableBorrowRateEnabled: true,
+  borrowingEnabled: false,
+  stableBorrowRateEnabled: false,
   reserveDecimals: '18',
   aTokenImpl: eContractid.AStETH,
   reserveFactor: '3500',

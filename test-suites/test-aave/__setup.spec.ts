@@ -62,6 +62,7 @@ import {
   getPairsTokenAggregator,
 } from '../../helpers/contracts-getters';
 import { WETH9Mocked } from '../../types/WETH9Mocked';
+import { strategyStETH } from '../../markets/aave/reservesConfigs';
 import { StETHMocked } from '../../types';
 
 const MOCK_USD_PRICE_IN_WEI = AaveConfig.ProtocolGlobalParams.MockUsdPriceInWei;
@@ -329,6 +330,8 @@ before(async () => {
   await rawBRE.run('set-DRE');
   const [deployer, secondaryWallet] = await getEthersSigners();
   const FORK = process.env.FORK;
+
+  strategyStETH.borrowingEnabled = true;
 
   if (FORK) {
     await rawBRE.run('aave:mainnet', { skipRegistry: true });
