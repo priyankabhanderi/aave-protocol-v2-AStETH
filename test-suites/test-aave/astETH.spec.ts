@@ -54,7 +54,7 @@ let lenderA,
 
 async function rebase(pool, steth, perc) {
   const currentSupply = new BigNumber((await steth.totalSupply()).toString());
-  const supplyDelta = currentSupply.multipliedBy(perc).subtractBy(currentSupply);
+  const supplyDelta = currentSupply.multipliedBy(perc);
 
   // tiny deposit to get the pool in sync
   //   await steth.connect(admin.signer).approve(pool.address, await fxtPt(steth, '1'));
@@ -125,6 +125,25 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
 
   afterEach(async () => {
     await evmRevert(evmSnapshotId);
+  });
+
+  describe('steth rebasing', () => {
+    describe('positive rebase', function () {
+      it('should update total supply correctly', async () => {
+        const { pool, stETH } = testEnv;
+
+        const perc = 0.1;
+        const currentSupply = new BigNumber((await steth.totalSupply()).toString());
+        await rebase(pool, stETH, perc);
+        const afterBalance = currentSupply.add(supplyDelta);
+        const newTotalSupply = await steth.totalSupply();
+
+        expect(newTotalSupply.toString()).to.be.equal(afterBalance.toString());
+      });
+    });
+    describe('negative rebase', function () {
+      it('should update total supply correctly', async () => {});
+    });
   });
 
   describe('user Transfer', () => {
