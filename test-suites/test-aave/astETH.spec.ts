@@ -76,9 +76,19 @@ async function check(amt, cmpAmt, token, tolarance) {
   expect(amt).to.be.bignumber.gte(cmpAmt.sub(t)).lte(cmpAmt.add(t));
 }
 
+async function checkGt(amt, cmpAmt) {
+  expect(amt).to.be.bignumber.gt(cmpAmt);
+}
+
 // tolarance 1 StETH cent ~= 0.01 StETH
 async function checkBal(token, addr, amt, tolarance = 0.01) {
   return check(await token.balanceOf(addr), await fxtPt(token, amt), token, tolarance);
+}
+
+async function checkBalGt(token, addr, amt) {
+  const balanceOf = await token.balanceOf(addr);
+  const targetAmt = await fxtPt(token, amt);
+  return checkGt(balanceOf, targetAmt);
 }
 
 async function checkScaledBal(token, addr, amt, tolarance = 0.01) {
@@ -87,6 +97,12 @@ async function checkScaledBal(token, addr, amt, tolarance = 0.01) {
 
 async function checkSupply(token, amt, tolarance = 0.01) {
   return check(await token.totalSupply(), await fxtPt(token, amt), token, tolarance);
+}
+
+async function checkSupplyGt(token, amt) {
+  const totalSupply = await token.totalSupply();
+  const targetAmt = await fxtPt(token, amt);
+  return checkGt(totalSupply, targetAmt);
 }
 
 makeSuite('StETH aToken', (testEnv: TestEnv) => {
@@ -1211,38 +1227,48 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
 
       await checkBal(stETH, lenderAAddress, '90000');
       await checkScaledBal(astETH, lenderAAddress, '10000'); // P = 7500 + 2500
-      await checkBal(astETH, lenderAAddress, '10208.33'); // T = P + 208.33 (I)
-      await checkSupply(astETH, '10208.33');
+      await checkBalGt(astETH, lenderAAddress, '10000'); // T = P + delta (I) > 10000
+      await checkSupplyGt(astETH, '10000');
       await checkBal(stETH, reserveData.aTokenAddress, '7500'); // unborrowed pool balance
       await checkBal(stETH, borrowerAAddress, '2500'); // borrower StETH balance
-      await checkBal(debtToken, borrowerAAddress, '2717.01'); // 2500 (principal) + 217.01 (I)
+      await checkBalGt(debtToken, borrowerAAddress, '2500'); // 2500 (principal) + delta (I)
       await checkBal(astETH, treasuryAddress, '0');
 
       // borrower gets some StETH to close out debt
-      await stETH.connect(lenderC.signer).transfer(borrowerAAddress, await fxtPt(stETH, '300'));
-      await checkBal(stETH, borrowerAAddress, '2800', 1);
+      await stETH.connect(lenderC.signer).transfer(borrowerAAddress, await fxtPt(stETH, '1500'));
+      await checkBal(stETH, borrowerAAddress, '4000', 1);
 
-      // borrower repays 2500 + 208.33 + 29.51 StETH
+      // borrower repays 2500 + delta (borrowed interest) StETH
       await stETH.connect(borrowerA.signer).approve(pool.address, MAX_UINT_AMOUNT);
       await pool
         .connect(borrowerA.signer)
         .repay(stETH.address, MAX_UINT_AMOUNT, RateMode.Variable, borrowerAAddress);
 
       await checkBal(stETH, lenderAAddress, '90000');
-      await checkBal(astETH, lenderAAddress, '10208.33');
-      await checkSupply(astETH, '10208.33');
-      await checkBal(stETH, reserveData.aTokenAddress, '10217.01');
-      await checkBal(stETH, borrowerAAddress, '82.99');
+      await checkBalGt(astETH, lenderAAddress, '10000');
+      await checkSupplyGt(astETH, '10000');
+      await checkBalGt(stETH, reserveData.aTokenAddress, '10000');
+      await checkBalGt(stETH, borrowerAAddress, '0');
       await checkBal(debtToken, borrowerAAddress, '0');
-      await checkBal(astETH, treasuryAddress, '0');
+      // await checkBal(astETH, treasuryAddress, '0');
+
+      const stETHBefore = await fxtPt(stETH, '90000');
+      const lenderANewBalance = (await astETH.balanceOf(lenderAAddress)).add(stETHBefore);
 
       await pool.connect(lenderA.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
 
-      await checkBal(stETH, lenderAAddress, '100208.33');
+      const lenderBalanceActual = await stETH.balanceOf(lenderAAddress);
+
+      await check(lenderANewBalance, lenderBalanceActual, stETH, 0.01);
       await checkBal(astETH, lenderAAddress, '0');
-      await checkSupply(astETH, '0');
-      await checkBal(stETH, reserveData.aTokenAddress, '8.68');
-      await checkBal(astETH, treasuryAddress, '0');
+
+      // await checkSupply(astETH, '0');
+      const treasuryAmount = await astETH.balanceOf(treasuryAddress);
+      const astETHTotalSupply = await astETH.totalSupply();
+      await check(astETHTotalSupply, treasuryAmount, astETH, 0.01);
+
+      await checkBalGt(stETH, reserveData.aTokenAddress, '0');
+      // await checkBal(astETH, treasuryAddress, '0');
     });
   });
 
@@ -1275,20 +1301,20 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
           borrowerAAddress
         );
 
-      await advanceTimeAndBlock(10 * 3600 * 24 * 365); // 10 years
+      await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 10 years
 
       await rebase(pool, stETH, +0.25); // 25% rebase
 
       await checkBal(stETH, lenderAAddress, '112500');
       await checkScaledBal(astETH, lenderAAddress, '11875.00'); // P = (7500*1.25) + 2500
-      await checkBal(astETH, lenderAAddress, '12122.39'); // T = P + 247.39 (I)
-      await checkSupply(astETH, '12122.39');
+      await checkBalGt(astETH, lenderAAddress, '11875.00'); // T = P + delta (I)
+      await checkSupplyGt(astETH, '11875.00');
       await checkBal(stETH, reserveData.aTokenAddress, '9375'); // unborrowed principal balance (7500*1.25)
       await checkBal(stETH, borrowerAAddress, '3125.00'); // Borrowed StETH balance
-      await checkBal(debtToken, borrowerAAddress, '2717.01'); // 2500 (principal) + 217.01 (I)
-      await checkBal(astETH, treasuryAddress, '0'); // Treasury
+      await checkBalGt(debtToken, borrowerAAddress, '2500'); // 2500 (principal) + delta (I)
+      // await checkBal(astETH, treasuryAddress, '0'); // Treasury
 
-      // borrower repays 2500 + 244.86 StETH
+      // borrower repays 2500 + (borrowed interest) StETH
       await stETH.connect(borrowerA.signer).approve(pool.address, MAX_UINT_AMOUNT);
       await pool
         .connect(borrowerA.signer)
@@ -1296,28 +1322,37 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
 
       await checkBal(stETH, lenderAAddress, '112500');
       await checkScaledBal(astETH, lenderAAddress, '11875.00');
-      await checkBal(astETH, lenderAAddress, '12122.39');
-      await checkSupply(astETH, '12122.39');
-      await checkBal(stETH, reserveData.aTokenAddress, '12092.01');
-      await checkBal(stETH, borrowerAAddress, '407.98');
+      await checkBalGt(astETH, lenderAAddress, '11875.00');
+      await checkSupplyGt(astETH, '11875.00');
+      await checkBalGt(stETH, reserveData.aTokenAddress, '11875');
+      await checkBalGt(stETH, borrowerAAddress, '0');
       await checkBal(debtToken, borrowerAAddress, '0');
-      await checkBal(astETH, treasuryAddress, '0');
+      // await checkBal(astETH, treasuryAddress, '0');
+
+      const stETHBefore = await stETH.balanceOf(lenderAAddress);
+      const expectedStETHAfter = (await astETH.balanceOf(lenderAAddress)).add(stETHBefore);
 
       await pool.connect(lenderA.signer).withdraw(
         stETH.address,
-        await fxtPt(stETH, '12090'),
-        // MAX_UINT_AMOUNT,
+        // await fxtPt(stETH, '12090'),
+        MAX_UINT_AMOUNT,
         lenderAAddress
       );
 
-      await checkBal(stETH, lenderAAddress, '124590.00');
-      await checkScaledBal(astETH, lenderAAddress, '31.73');
-      await checkBal(astETH, lenderAAddress, '32.39');
-      await checkSupply(astETH, '32.39');
-      await checkBal(stETH, reserveData.aTokenAddress, '2.01');
-      await checkBal(stETH, borrowerAAddress, '407.98');
+      const stETHAfter = await stETH.balanceOf(lenderAAddress);
+
+      await check(stETHAfter, expectedStETHAfter, stETH, 0.01);
+      await checkScaledBal(astETH, lenderAAddress, '0');
+      await checkBal(astETH, lenderAAddress, '0');
+
+      const treasuryAmount = await astETH.balanceOf(treasuryAddress);
+      const astETHTotalSupply = await astETH.totalSupply();
+      await check(astETHTotalSupply, treasuryAmount, astETH, 0.01);
+
+      await checkBalGt(stETH, reserveData.aTokenAddress, '0');
+      await checkBalGt(stETH, borrowerAAddress, '0');
       await checkBal(debtToken, borrowerAAddress, '0');
-      await checkBal(astETH, treasuryAddress, '0');
+      // await checkBal(astETH, treasuryAddress, '0');
     });
   });
 
@@ -1350,22 +1385,22 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
           borrowerAAddress
         );
 
-      await advanceTimeAndBlock(10 * 3600 * 24 * 365); // 10 years
+      await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 10 years
       await rebase(pool, stETH, -0.25); // -25% rebase
 
       await checkBal(stETH, lenderAAddress, '67500.00');
       await checkScaledBal(astETH, lenderAAddress, '8125'); // P = (7500*0.75) + 2500
-      await checkBal(astETH, lenderAAddress, '8294.27'); // T = P + 169.27 (I)
-      await checkSupply(astETH, '8294.27');
+      await checkBalGt(astETH, lenderAAddress, '8125'); // T = P + delta (I)
+      await checkSupplyGt(astETH, '8125');
       await checkBal(stETH, reserveData.aTokenAddress, '5625.00'); // unborrowed principal balance (7500*0.75)
       await checkBal(stETH, borrowerAAddress, '1875.00'); // Borrowed StETH balance
-      await checkBal(debtToken, borrowerAAddress, '2717.01'); // 2500 (principal) + 217.01 (I)
-      await checkBal(astETH, treasuryAddress, '0'); // Treasury
+      await checkBalGt(debtToken, borrowerAAddress, '2500'); // 2500 (principal) + delta (I)
+      // await checkBal(astETH, treasuryAddress, '0'); // Treasury
 
       // friend sends borrower some stETH to pay back interest
       await stETH.connect(lenderC.signer).transfer(borrowerAAddress, await fxtPt(stETH, '1000'));
 
-      // borrower repays 2500 + 365.25 StETH
+      // borrower repays 2500 + (borrowed interest) StETH
       await stETH.connect(borrowerA.signer).approve(pool.address, MAX_UINT_AMOUNT);
       await pool
         .connect(borrowerA.signer)
@@ -1373,23 +1408,33 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
 
       await checkBal(stETH, lenderAAddress, '67500.00');
       await checkScaledBal(astETH, lenderAAddress, '8125');
-      await checkBal(astETH, lenderAAddress, '8294.27');
-      await checkSupply(astETH, '8294.27');
-      await checkBal(stETH, reserveData.aTokenAddress, '8342.01');
-      await checkBal(stETH, borrowerAAddress, '157.98');
+      await checkBalGt(astETH, lenderAAddress, '8125');
+      await checkSupplyGt(astETH, '8125');
+      await checkBalGt(stETH, reserveData.aTokenAddress, '8125');
+      await checkBalGt(stETH, borrowerAAddress, '0');
       await checkBal(debtToken, borrowerAAddress, '0');
-      await checkBal(astETH, treasuryAddress, '0');
+      // await checkBal(astETH, treasuryAddress, '0');
+
+      const stETHBefore = await stETH.balanceOf(lenderAAddress);
+      const expectedStETHAfter = (await astETH.balanceOf(lenderAAddress)).add(stETHBefore);
 
       await pool.connect(lenderA.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
 
-      await checkBal(stETH, lenderAAddress, '75794.27');
+      const stETHAfter = await stETH.balanceOf(lenderAAddress);
+
+      await check(stETHAfter, expectedStETHAfter, stETH, 0.01);
       await checkScaledBal(astETH, lenderAAddress, '0');
       await checkBal(astETH, lenderAAddress, '0');
-      await checkSupply(astETH, '0');
-      await checkBal(stETH, reserveData.aTokenAddress, '47.74');
-      await checkBal(stETH, borrowerAAddress, '157.98');
+
+      // await checkSupply(astETH, '0');
+      const treasuryAmount = await astETH.balanceOf(treasuryAddress);
+      const astETHTotalSupply = await astETH.totalSupply();
+      await check(astETHTotalSupply, treasuryAmount, astETH, 0.01);
+
+      await checkBalGt(stETH, reserveData.aTokenAddress, '0');
+      await checkBalGt(stETH, borrowerAAddress, '0');
       await checkBal(debtToken, borrowerAAddress, '0');
-      await checkBal(astETH, treasuryAddress, '0');
+      // await checkBal(astETH, treasuryAddress, '0');
     });
   });
 
@@ -1448,7 +1493,7 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
         );
 
       // time passes and supply changes
-      await advanceTimeAndBlock(10 * 3600 * 24 * 365); // 10 years
+      await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 1 year
       await rebase(pool, stETH, 0.5); // +50% rebase
 
       // borrower A repays
@@ -1458,10 +1503,11 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
         .repay(stETH.address, MAX_UINT_AMOUNT, RateMode.Variable, borrowerAAddress);
 
       // time passes and supply changes
-      await advanceTimeAndBlock(10 * 3600 * 24 * 365); // 10 years
+      await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 1 year
       await rebase(pool, stETH, -0.05); // -5% rebase
       // lenders pull out
       await pool.connect(lenderC.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
+      await pool.connect(lenderA.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
       // borrower B repays
       await stETH.connect(borrowerB.signer).approve(pool.address, MAX_UINT_AMOUNT);
       await pool
@@ -1469,23 +1515,26 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
         .repay(stETH.address, MAX_UINT_AMOUNT, RateMode.Variable, borrowerBAddress);
 
       // time passes and supply changes
-      await advanceTimeAndBlock(10 * 3600 * 24 * 365); // 10 years
+      await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 1 year
       await rebase(pool, stETH, -0.1); // -10% rebase
 
-      // lenders pull out
-      await pool.connect(lenderA.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
-      await pool
-        .connect(lenderB.signer)
-        .withdraw(stETH.address, await fxtPt(stETH, '5872'), lenderAAddress);
-
       await checkBal(astETH, lenderAAddress, '0');
-      await checkBal(astETH, lenderBAddress, '146.08');
+      await checkBalGt(astETH, lenderBAddress, '5000');
       await checkBal(astETH, lenderCAddress, '0');
       await checkBal(debtToken, borrowerAAddress, '0');
       await checkBal(debtToken, borrowerBAddress, '0');
-      await checkSupply(astETH, '146.08');
-      await checkBal(stETH, reserveData.aTokenAddress, '0.04');
-      await checkBal(astETH, treasuryAddress, '0');
+
+      // await checkSupply(astETH, '146.08');
+      const lenderBBalance = await astETH.balanceOf(lenderBAddress);
+      const treasuryAmount = await astETH.balanceOf(treasuryAddress);
+      const currentTotalSup = await astETH.totalSupply();
+      await check(currentTotalSup, lenderBBalance.add(treasuryAmount), astETH, 0.01);
+
+      // await checkBal(stETH, reserveData.aTokenAddress, '0.04');
+      const balanceOfAstETH = await stETH.balanceOf(reserveData.aTokenAddress);
+      await checkGt(currentTotalSup, balanceOfAstETH);
+
+      // await checkBal(astETH, treasuryAddress, '0');
     });
   });
 });
