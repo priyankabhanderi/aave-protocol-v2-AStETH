@@ -55,6 +55,8 @@ import {
   StETHMockedFactory,
   VariableDebtStETHFactory,
   AStETHFactory,
+  StableDebtToken,
+  StableDebtStETHFactory,
 } from '../types';
 import {
   withSaveAndVerify,
@@ -667,8 +669,6 @@ export const deployATokenImplementations = async (
   const poolConfig = loadPoolConfig(pool);
   const network = <eNetwork>DRE.network.name;
 
-  console.log(reservesConfig);
-
   // Obtain the different AToken implementations of all reserves inside the Market config
   const aTokenImplementations = [
     ...Object.entries(reservesConfig).reduce<Set<eContractid>>((acc, [, entry]) => {
@@ -764,6 +764,14 @@ export const deployVariableDebtStETHTokenImplementation = async (verify: boolean
   withSaveAndVerify(
     await new VariableDebtStETHFactory(await getFirstSigner()).deploy(),
     eContractid.VariableDebtStETHToken,
+    [],
+    verify
+  );
+
+export const deployStableDebtStETHTokenImplementation = async (verify: boolean) =>
+  withSaveAndVerify(
+    await new StableDebtStETHFactory(await getFirstSigner()).deploy(),
+    eContractid.StableDebtStETHToken,
     [],
     verify
   );

@@ -123,7 +123,7 @@ export const initReservesByHelper = async (
     initInputParams.push({
       aTokenImpl: await getContractAddressWithJsonFallback(aTokenImpl, poolName),
       stableDebtTokenImpl: await getContractAddressWithJsonFallback(
-        eContractid.StableDebtToken,
+        symbol == 'stETH' ? eContractid.StableDebtStETHToken : eContractid.StableDebtToken,
         poolName
       ),
       variableDebtTokenImpl: await getContractAddressWithJsonFallback(

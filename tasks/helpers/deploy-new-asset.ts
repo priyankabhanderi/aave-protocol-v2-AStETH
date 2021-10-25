@@ -10,6 +10,7 @@ import {
   deployStableDebtToken,
   deployVariableDebtToken,
   deployVariableDebtStETHTokenImplementation,
+  deployStableDebtStETHTokenImplementation,
 } from './../../helpers/contracts-deployments';
 import { setDRE } from '../../helpers/misc-utils';
 import { ZERO_ADDRESS } from './../../helpers/constants';
@@ -49,18 +50,22 @@ WRONG RESERVE ASSET SETUP:
     );
     const poolAddress = await addressProvider.getLendingPool();
     const aToken = await deployCustomAToken(verify);
-    const stableDebt = await deployStableDebtToken(
-      [
-        poolAddress,
-        reserveAssetAddress,
-        ZERO_ADDRESS, // Incentives Controller
-        `Aave stable debt bearing ${symbol}`,
-        `stableDebt${symbol}`,
-      ],
-      verify
-    );
+    let stableDebt;
+    if (symbol == 'stETH') {
+      stableDebt = await deployStableDebtStETHTokenImplementation(verify);
+    } else {
+      stableDebt = await deployStableDebtToken(
+        [
+          poolAddress,
+          reserveAssetAddress,
+          ZERO_ADDRESS, // Incentives Controller
+          `Aave stable debt bearing ${symbol}`,
+          `stableDebt${symbol}`,
+        ],
+        verify
+      );
+    }
     let variableDebt;
-    console.log('==========', symbol);
     if (symbol == 'stETH') {
       variableDebt = await deployVariableDebtStETHTokenImplementation(verify);
     } else {
