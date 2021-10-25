@@ -4,9 +4,13 @@
 pragma solidity 0.6.12;
 
 import {SafeMath} from '../../dependencies/openzeppelin/contracts/SafeMath.sol';
+import {SignedSafeMath} from '../../dependencies/openzeppelin/contracts/SignedSafeMath.sol';
+import {UInt256Lib} from '../../dependencies/uFragments/UInt256Lib.sol';
 
 contract StETHMocked {
   using SafeMath for uint256;
+  using UInt256Lib for uint256;
+  using SignedSafeMath for int256;
 
   string public symbol = 'stETH';
   uint256 public decimals = 18;
@@ -51,9 +55,13 @@ contract StETHMocked {
     return _mintShares(_to, amount);
   }
 
-  function rebase(uint256 addingAmount) external returns (uint256) {
-    if (_totalSupply != 0) {
-      _totalSupply = _totalSupply.add(addingAmount);
+  function rebase(int256 addingAmount) external returns (uint256) {
+    int256 currentTotalSupply = _totalSupply.toInt256Safe();
+
+    if (currentTotalSupply != 0) {
+      currentTotalSupply = currentTotalSupply.add(addingAmount);
+      require(currentTotalSupply > 0);
+      _totalSupply = uint256(currentTotalSupply);
     }
 
     return _totalSupply;
