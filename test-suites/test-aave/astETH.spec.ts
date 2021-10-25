@@ -132,17 +132,27 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
       it('should update total supply correctly', async () => {
         const { pool, stETH } = testEnv;
 
-        const perc = 0.1;
-        const currentSupply = new BigNumber((await steth.totalSupply()).toString());
-        await rebase(pool, stETH, perc);
-        const afterBalance = currentSupply.add(supplyDelta);
-        const newTotalSupply = await steth.totalSupply();
+        const currentSupply = new BigNumber((await stETH.totalSupply()).toString());
+        const supplyDelta = currentSupply.multipliedBy(+0.1);
+        await rebase(pool, stETH, +0.1);
+        const afterBalance = currentSupply.plus(supplyDelta);
+        const newTotalSupply = await stETH.totalSupply();
 
-        expect(newTotalSupply.toString()).to.be.equal(afterBalance.toString());
+        expect(newTotalSupply.toString()).to.be.equal(afterBalance.toString(10));
       });
     });
     describe('negative rebase', function () {
-      it('should update total supply correctly', async () => {});
+      it('should update total supply correctly', async () => {
+        const { pool, stETH } = testEnv;
+
+        const currentSupply = new BigNumber((await stETH.totalSupply()).toString());
+        const supplyDelta = currentSupply.multipliedBy(-0.1);
+        await rebase(pool, stETH, -0.1);
+        const afterBalance = currentSupply.plus(supplyDelta);
+        const newTotalSupply = await stETH.totalSupply();
+
+        expect(newTotalSupply.toString()).to.be.equal(afterBalance.toString(10));
+      });
     });
   });
 
