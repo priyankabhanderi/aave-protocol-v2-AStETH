@@ -184,19 +184,19 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
     describe('when borrowed amount > 0', function () {
       describe('when lenderA deposits 1000 StETH, transfers all to himself', function () {
         it('should update balances correctly', async () => {
-          const { pool, dai, stETH, aDai } = testEnv;
+          const { pool, dai, stETH } = testEnv;
 
           await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000'));
           await pool
             .connect(lenderA.signer)
             .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
 
-          await dai.mint(await fxtPt(dai, '2000'));
-          await dai.transfer(borrowerAAddress, await fxtPt(dai, '2000'));
-          await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '2000'));
+          await dai.mint(await fxtPt(dai, '200000'));
+          await dai.transfer(borrowerAAddress, await fxtPt(dai, '200000'));
+          await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '200000'));
           await pool
             .connect(borrowerA.signer)
-            .deposit(dai.address, await fxtPt(dai, '2000'), borrowerAAddress, '0');
+            .deposit(dai.address, await fxtPt(dai, '200000'), borrowerAAddress, '0');
 
           await pool
             .connect(borrowerA.signer)
@@ -227,12 +227,12 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
             .connect(lenderA.signer)
             .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
 
-          await dai.mint(await fxtPt(dai, '2000'));
-          await dai.transfer(borrowerAAddress, await fxtPt(dai, '2000'));
-          await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '2000'));
+          await dai.mint(await fxtPt(dai, '200000'));
+          await dai.transfer(borrowerAAddress, await fxtPt(dai, '200000'));
+          await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '200000'));
           await pool
             .connect(borrowerA.signer)
-            .deposit(dai.address, await fxtPt(dai, '2000'), borrowerAAddress, '0');
+            .deposit(dai.address, await fxtPt(dai, '200000'), borrowerAAddress, '0');
 
           await pool
             .connect(borrowerA.signer)
@@ -1175,12 +1175,12 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
         .deposit(stETH.address, await fxtPt(stETH, '10000'), lenderAAddress, '0');
 
       // borrower deposits DAI
-      await dai.mint(await fxtPt(dai, '20000'));
-      await dai.transfer(borrowerAAddress, await fxtPt(dai, '20000'));
-      await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '20000'));
+      await dai.mint(await fxtPt(dai, '200000'));
+      await dai.transfer(borrowerAAddress, await fxtPt(dai, '200000'));
+      await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '200000'));
       await pool
         .connect(borrowerA.signer)
-        .deposit(dai.address, await fxtPt(dai, '20000'), borrowerAAddress, '0');
+        .deposit(dai.address, await fxtPt(dai, '200000'), borrowerAAddress, '0');
 
       await checkBal(stETH, lenderAAddress, '90000');
       await checkBal(astETH, lenderAAddress, '10000');
@@ -1257,12 +1257,12 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
         .deposit(stETH.address, await fxtPt(stETH, '10000'), lenderAAddress, '0');
 
       // borrower deposits DAI
-      await dai.mint(await fxtPt(dai, '20000'));
-      await dai.transfer(borrowerAAddress, await fxtPt(dai, '20000'));
-      await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '20000'));
+      await dai.mint(await fxtPt(dai, '200000'));
+      await dai.transfer(borrowerAAddress, await fxtPt(dai, '200000'));
+      await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '200000'));
       await pool
         .connect(borrowerA.signer)
-        .deposit(dai.address, await fxtPt(dai, '20000'), borrowerAAddress, '0');
+        .deposit(dai.address, await fxtPt(dai, '200000'), borrowerAAddress, '0');
 
       // borrower borrows StETH
       await pool
@@ -1332,12 +1332,12 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
         .deposit(stETH.address, await fxtPt(stETH, '10000'), lenderAAddress, '0');
 
       // borrower deposits DAI
-      await dai.mint(await fxtPt(dai, '20000'));
-      await dai.transfer(borrowerAAddress, await fxtPt(dai, '20000'));
-      await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '20000'));
+      await dai.mint(await fxtPt(dai, '200000'));
+      await dai.transfer(borrowerAAddress, await fxtPt(dai, '200000'));
+      await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '200000'));
       await pool
         .connect(borrowerA.signer)
-        .deposit(dai.address, await fxtPt(dai, '20000'), borrowerAAddress, '0');
+        .deposit(dai.address, await fxtPt(dai, '200000'), borrowerAAddress, '0');
 
       // borrower borrows StETH
       await pool
