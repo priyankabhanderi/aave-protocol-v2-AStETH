@@ -55,16 +55,7 @@ let lenderA,
 async function rebase(pool, steth, perc) {
   const currentSupply = new BigNumber((await steth.totalSupply()).toString());
   const supplyDelta = currentSupply.multipliedBy(perc);
-
-  // tiny deposit to get the pool in sync
-  //   await steth.connect(admin.signer).approve(pool.address, await fxtPt(steth, '1'));
-  //   await pool
-  //     .connect(admin.signer)
-  //     .deposit(steth.address, await fxtPt(steth, '0.000001'), adminAddress, '0');
   await steth.rebase(supplyDelta.toString(10));
-  //   await pool
-  //     .connect(admin.signer)
-  //     .deposit(steth.address, await fxtPt(steth, '0.000001'), adminAddress, '0');
 }
 
 function fxtPt(t, amt) {
