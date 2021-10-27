@@ -49,10 +49,39 @@ WRONG RESERVE ASSET SETUP:
       LENDING_POOL_ADDRESS_PROVIDER[network]
     );
     const poolAddress = await addressProvider.getLendingPool();
-    const aToken = await deployCustomAToken(verify);
-    let stableDebt;
+    let aToken, stableDebt, variableDebt;
+    aToken = await deployCustomAToken(verify);
     if (symbol == 'stETH') {
+      variableDebt = await deployVariableDebtStETHTokenImplementation(verify);
       stableDebt = await deployStableDebtStETHTokenImplementation(verify);
+
+      const treasuryAddress = await getTreasuryAddress(marketConfigs.AaveConfig);
+
+      await aToken.initialize(
+        poolAddress,
+        treasuryAddress,
+        reserveAssetAddress,
+        ZERO_ADDRESS, // Incentives Controller
+        18,
+        'Aave aToken for StETH',
+        'astETH'
+      );
+      await variableDebt.initialize(
+        poolAddress,
+        reserveAssetAddress,
+        ZERO_ADDRESS, // Incentives Controller
+        18,
+        'Aave variable debt bearing StETH',
+        'variableDebtstETH'
+      );
+      await stableDebt.initialize(
+        poolAddress,
+        reserveAssetAddress,
+        ZERO_ADDRESS, // Incentives Controller
+        18,
+        'Aave stable debt bearing StETH',
+        'stableDebtstETH'
+      );
     } else {
       stableDebt = await deployStableDebtToken(
         [
@@ -64,11 +93,6 @@ WRONG RESERVE ASSET SETUP:
         ],
         verify
       );
-    }
-    let variableDebt;
-    if (symbol == 'stETH') {
-      variableDebt = await deployVariableDebtStETHTokenImplementation(verify);
-    } else {
       variableDebt = await deployVariableDebtToken(
         [
           poolAddress,
