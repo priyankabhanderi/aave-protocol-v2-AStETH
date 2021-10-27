@@ -74,6 +74,7 @@ import { HardhatRuntimeEnvironment } from 'hardhat/types';
 import { LendingPoolLibraryAddresses } from '../types/LendingPoolFactory';
 import { UiPoolDataProvider } from '../types';
 import { eNetwork } from './types';
+import { ZERO_ADDRESS } from './constants';
 
 export const deployUiPoolDataProvider = async (
   [incentivesController, aaveOracle]: [tEthereumAddress, tEthereumAddress],
@@ -778,7 +779,14 @@ export const deployStableDebtStETHTokenImplementation = async (verify: boolean) 
 
 export const deployAStETHTokenImplementation = async (verify: boolean) => {
   return withSaveAndVerify(
-    await new AStETHFactory(await getFirstSigner()).deploy(),
+    await new AStETHFactory(await getFirstSigner()).deploy(
+      ZERO_ADDRESS,
+      ZERO_ADDRESS,
+      ZERO_ADDRESS,
+      '',
+      '',
+      ZERO_ADDRESS
+    ),
     eContractid.AStETH,
     [],
     verify

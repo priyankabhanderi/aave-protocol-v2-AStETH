@@ -41,6 +41,16 @@ contract VariableDebtStETH is DebtTokenBase, IVariableDebtToken {
   // ---------------------------------------------------------------------------
 
   function initialize(
+    uint8 decimals,
+    string memory name,
+    string memory symbol
+  ) public initializer {
+    _setName(name);
+    _setSymbol(symbol);
+    _setDecimals(decimals);
+  }
+
+  function initialize(
     ILendingPool pool,
     address underlyingAsset,
     IAaveIncentivesController incentivesController,

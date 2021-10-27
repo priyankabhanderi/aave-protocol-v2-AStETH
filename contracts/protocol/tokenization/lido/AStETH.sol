@@ -28,11 +28,7 @@ interface IBookKeptBorrowing {
  * @dev Implementation of the interest bearing token for the Aave protocol
  * @author Aave
  */
-contract AStETH is
-  VersionedInitializable,
-  IncentivizedERC20('ATOKEN_IMPL', 'ATOKEN_IMPL', 0),
-  IAToken
-{
+contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
   using WadRayMath for uint256;
   using SafeERC20 for IERC20;
   using UInt256Lib for uint256;
@@ -75,6 +71,52 @@ contract AStETH is
 
   function getRevision() internal pure virtual override returns (uint256) {
     return ATOKEN_REVISION;
+  }
+
+  constructor(
+    ILendingPool pool,
+    address underlyingAssetAddress,
+    address reserveTreasuryAddress,
+    string memory tokenName,
+    string memory tokenSymbol,
+    address incentivesController
+  ) public IncentivizedERC20('ATOKEN_IMPL', 'ATOKEN_IMPL', 0) {
+    _pool = pool;
+    _underlyingAsset = underlyingAssetAddress;
+    _treasury = reserveTreasuryAddress;
+  }
+
+  /**
+   * @dev Initializes the aToken
+   * @param aTokenDecimals The decimals of the aToken, same as the underlying asset's
+   * @param aTokenName The name of the aToken
+   * @param aTokenSymbol The symbol of the aToken
+   */
+  function initialize(
+    uint8 aTokenDecimals,
+    string calldata aTokenName,
+    string calldata aTokenSymbol
+  ) external initializer {
+    uint256 chainId;
+
+    //solium-disable-next-line
+    assembly {
+      chainId := chainid()
+    }
+
+    DOMAIN_SEPARATOR = keccak256(
+      abi.encode(
+        EIP712_DOMAIN,
+        keccak256(bytes(aTokenName)),
+        keccak256(EIP712_REVISION),
+        chainId,
+        address(this)
+      )
+    );
+
+    _setName(aTokenName);
+    _setSymbol(aTokenSymbol);
+    _setDecimals(aTokenDecimals);
   }
 
   /**
