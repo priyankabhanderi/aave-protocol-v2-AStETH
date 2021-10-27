@@ -79,6 +79,39 @@ contract AStETH is
 
   /**
    * @dev Initializes the aToken
+   * @param aTokenDecimals The decimals of the aToken, same as the underlying asset's
+   * @param aTokenName The name of the aToken
+   * @param aTokenSymbol The symbol of the aToken
+   */
+  function initialize(
+    uint8 aTokenDecimals,
+    string calldata aTokenName,
+    string calldata aTokenSymbol
+  ) external initializer {
+    uint256 chainId;
+
+    //solium-disable-next-line
+    assembly {
+      chainId := chainid()
+    }
+
+    DOMAIN_SEPARATOR = keccak256(
+      abi.encode(
+        EIP712_DOMAIN,
+        keccak256(bytes(aTokenName)),
+        keccak256(EIP712_REVISION),
+        chainId,
+        address(this)
+      )
+    );
+
+    _setName(aTokenName);
+    _setSymbol(aTokenSymbol);
+    _setDecimals(aTokenDecimals);
+  }
+
+  /**
+   * @dev Initializes the aToken
    * @param pool The address of the lending pool where this aToken will be used
    * @param treasury The address of the Aave treasury, receiving the fees on this aToken
    * @param underlyingAsset The address of the underlying asset of this aToken (E.g. WETH for aWETH)
