@@ -28,11 +28,7 @@ interface IBookKeptBorrowing {
  * @dev Implementation of the interest bearing token for the Aave protocol
  * @author Aave
  */
-contract AStETH is
-  VersionedInitializable,
-  IncentivizedERC20('ATOKEN_IMPL', 'ATOKEN_IMPL', 0),
-  IAToken
-{
+contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
   using WadRayMath for uint256;
   using SafeERC20 for IERC20;
   using UInt256Lib for uint256;
@@ -75,6 +71,19 @@ contract AStETH is
 
   function getRevision() internal pure virtual override returns (uint256) {
     return ATOKEN_REVISION;
+  }
+
+  constructor(
+    ILendingPool pool,
+    address underlyingAssetAddress,
+    address reserveTreasuryAddress,
+    string memory tokenName,
+    string memory tokenSymbol,
+    address incentivesController
+  ) public IncentivizedERC20('ATOKEN_IMPL', 'ATOKEN_IMPL', 0) {
+    _pool = pool;
+    _underlyingAsset = underlyingAssetAddress;
+    _treasury = reserveTreasuryAddress;
   }
 
   /**
