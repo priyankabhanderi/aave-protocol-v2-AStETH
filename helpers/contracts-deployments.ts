@@ -761,32 +761,27 @@ export const deployMockStETH = async (
     verify
   );
 
-export const deployVariableDebtStETHTokenImplementation = async (verify: boolean) =>
-  withSaveAndVerify(
+export const deployVariableDebtStETHTokenImplementation = async (verify: boolean) => {
+  return withSaveAndVerify(
     await new VariableDebtStETHFactory(await getFirstSigner()).deploy(),
     eContractid.VariableDebtStETHToken,
     [],
     verify
   );
+};
 
-export const deployStableDebtStETHTokenImplementation = async (verify: boolean) =>
-  withSaveAndVerify(
+export const deployStableDebtStETHTokenImplementation = async (verify: boolean) => {
+  return withSaveAndVerify(
     await new StableDebtStETHFactory(await getFirstSigner()).deploy(),
     eContractid.StableDebtStETHToken,
     [],
     verify
   );
+};
 
 export const deployAStETHTokenImplementation = async (verify: boolean) => {
   return withSaveAndVerify(
-    await new AStETHFactory(await getFirstSigner()).deploy(
-      ZERO_ADDRESS,
-      ZERO_ADDRESS,
-      ZERO_ADDRESS,
-      '',
-      '',
-      ZERO_ADDRESS
-    ),
+    await new AStETHFactory(await getFirstSigner()).deploy(),
     eContractid.AStETH,
     [],
     verify
