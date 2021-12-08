@@ -111,6 +111,14 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
     await evmRevert(evmSnapshotId);
   });
 
+  describe('astETH.initializeDebtToken()', () => {
+    it('should revert when called after variableDebtToken was initialized', async () => {
+      await expect(astETH.connect(lenderA.signer).initializeDebtToken()).to.be.revertedWith(
+        'ALREADY_INITIALIZED'
+      );
+    });
+  });
+
   describe('steth rebasing', () => {
     describe('positive rebase', function () {
       it('should update total supply correctly', async () => {
