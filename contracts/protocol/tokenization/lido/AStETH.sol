@@ -116,6 +116,7 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
 
   function initializeDebtToken() external {
     DataTypes.ReserveData memory reserveData = POOL.getReserveData(UNDERLYING_ASSET_ADDRESS);
+    require(address(_variableDebtStETH) == address(0), "ALREADY_INITIALIZED");
     _variableDebtStETH = IBookKeptBorrowing(reserveData.variableDebtTokenAddress);
   }
 
