@@ -445,7 +445,7 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
     uint256 mintAmountInternal =
       scaledTotalSupply == 0
         ? ISTETH(UNDERLYING_ASSET_ADDRESS).getSharesByPooledEth(mintAmountScaled)
-        : (mintAmountScaled * _totalSupply) / scaledTotalSupply;
+        : mintAmountScaled.mul(_totalSupply).div(scaledTotalSupply);
     _mint(user, mintAmountInternal);
   }
 
