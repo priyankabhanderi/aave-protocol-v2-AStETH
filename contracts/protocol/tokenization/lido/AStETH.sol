@@ -585,15 +585,15 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
   }
 
   /**
-   * @dev heldShares = _totalShares - _borrowedShares
-   *      heldStETH = stETH.getPooledEthByShares(heldShares)
-   *      _scaledTotalSupply = heldStETH + _borrowedStETH
+   * @dev sharesToRebase MUST be always positive by design
    **/
   function _scaledTotalSupply(ExtData memory e) private view returns (uint256) {
+    int256 sharesToRebase = _totalShares.sub(e.totalSharesBorrowed);
+    assert(sharesToRebase >= 0);
     return
-      ISTETH(UNDERLYING_ASSET_ADDRESS).getPooledEthByShares(
-        uint256(_totalShares - e.totalSharesBorrowed)
-      ) + e.totalPrincipalBorrowed;
+      ISTETH(UNDERLYING_ASSET_ADDRESS).getPooledEthByShares(uint256(sharesToRebase)).add(
+        e.totalPrincipalBorrowed
+      );
   }
 
   /**
