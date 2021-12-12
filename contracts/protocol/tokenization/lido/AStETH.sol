@@ -136,7 +136,7 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
     uint256 amountScaled = amount.rayDiv(index);
     require(amountScaled != 0, Errors.CT_INVALID_BURN_AMOUNT);
 
-    _burnScaled(user, amountScaled, _fetchExtData());
+    _burnScaled(user, amountScaled);
     _totalShares = _totalShares.sub(
       ISTETH(UNDERLYING_ASSET_ADDRESS).getSharesByPooledEth(amountScaled).toInt256Safe()
     );
@@ -165,7 +165,7 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
     uint256 amountScaled = amount.rayDiv(index);
     require(amountScaled != 0, Errors.CT_INVALID_MINT_AMOUNT);
 
-    _mintScaled(user, amountScaled, _fetchExtData());
+    _mintScaled(user, amountScaled);
     _totalShares = _totalShares.add(
       ISTETH(UNDERLYING_ASSET_ADDRESS).getSharesByPooledEth(amountScaled).toInt256Safe()
     );
@@ -194,7 +194,7 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
     // In that case, the treasury will experience a (very small) loss, but it
     // wont cause potentially valid transactions to fail.
     uint256 amountScaled = amount.rayDiv(index);
-    _mintScaled(treasury, amountScaled, _fetchExtData());
+    _mintScaled(treasury, amountScaled);
     _totalShares = _totalShares.add(
       ISTETH(UNDERLYING_ASSET_ADDRESS).getSharesByPooledEth(amountScaled).toInt256Safe()
     );
@@ -436,25 +436,16 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
   // =============================================
   // StETH specific functions
 
-  function _mintScaled(
-    address user,
-    uint256 mintAmountScaled,
-    ExtData memory e
-  ) internal {
-    uint256 scaledTotalSupply = _scaledTotalSupply(e);
-    uint256 mintAmountInternal =
-      scaledTotalSupply == 0
-        ? ISTETH(UNDERLYING_ASSET_ADDRESS).getSharesByPooledEth(mintAmountScaled)
-        : mintAmountScaled.mul(_totalSupply).div(scaledTotalSupply);
-    _mint(user, mintAmountInternal);
+  function _mintScaled(address user, uint256 amountScaled) internal {
+    uint256 scaledTotalSupply = _scaledTotalSupply(_fetchExtData());
+    uint256 mintAmount =
+      scaledTotalSupply == 0 ? amountScaled : amountScaled.mul(_totalSupply).div(scaledTotalSupply);
+    _mint(user, mintAmount);
   }
 
-  function _burnScaled(
-    address user,
-    uint256 burnAmountScaled,
-    ExtData memory e
-  ) internal {
-    _burn(user, burnAmountScaled.mul(_totalSupply).div(_scaledTotalSupply(e)));
+  function _burnScaled(address user, uint256 amountScaled) internal {
+    uint256 mintAmount = amountScaled.mul(_totalSupply).div(_scaledTotalSupply(_fetchExtData()));
+    _burn(user, mintAmount);
   }
 
   /**
