@@ -480,14 +480,16 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
   }
 
   /**
-   * @dev sharesToRebase MUST be always positive by design
+   * @dev sharesInReserve NEVER can be less than zero by design.
+   * Amount of deposited stETH shares ALWAYS greater
+   * than the number of shares that might be borrowed.
    **/
   function _scaledTotalSupply(ExtData memory e) private view returns (uint256) {
-    int256 sharesToRebase = _totalShares.sub(e.totalSharesBorrowed);
-    assert(sharesToRebase >= 0);
+    int256 sharesInReserve = _totalShares.sub(e.totalSharesBorrowed);
+    assert(sharesInReserve >= 0);
     return
-      ISTETH(UNDERLYING_ASSET_ADDRESS).getPooledEthByShares(uint256(sharesToRebase)).add(
-        e.totalPrincipalBorrowed
+      e.totalPrincipalBorrowed.add(
+        ISTETH(UNDERLYING_ASSET_ADDRESS).getPooledEthByShares(uint256(sharesInReserve))
       );
   }
 
