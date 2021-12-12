@@ -12,16 +12,11 @@ import {IERC20} from '../../../dependencies/openzeppelin/contracts/IERC20.sol';
 import {SafeMath} from '../../../dependencies/openzeppelin/contracts/SafeMath.sol';
 import {SignedSafeMath} from '../../../dependencies/openzeppelin/contracts/SignedSafeMath.sol';
 
-/*
-  stETH specific VariableDebtStETH implementation.
-  The VariableDebtStETH doesn't alter any logic but performs some additional book-keeping.
-
-  On mint and burn a private variable `_totalGonsBorrowed` keeps track of
-    the scaled stETH principal borrowed.
-
-  * fetchBorrowData() returns the total AMPL borrowed and the total scaled AMPL borrowed
-  * fetchTotalSupply() fetches AMPL's current supply
-*/
+/**
+ * @notice stETH specific variable debt token implementation.
+ * @dev The VariableDebtStETH doesn't alter any logic but performs some additional book-keeping.
+ *   On mint and burn a private variable `_totalSharesBorrowed` keeps track of the stETH shares borrowed.
+ */
 contract VariableDebtStETH is DebtTokenBase, IVariableDebtToken {
   using WadRayMath for uint256;
   using SafeMath for uint256;
@@ -167,10 +162,17 @@ contract VariableDebtStETH is DebtTokenBase, IVariableDebtToken {
 
   // ---------------------------------------------------------------------------
   // Custom methods for stETH
+
+  /**
+   * @return The total supply of variable debt token and amount of stETH shares borrowed.
+   */
   function getBorrowData() external view returns (uint256, int256) {
     return (super.totalSupply(), _totalSharesBorrowed);
   }
 
+  /**
+   * @return stETH current supply
+   */
   function fetchStETHTotalSupply() internal view returns (uint256) {
     return ISTETH(UNDERLYING_ASSET_ADDRESS).totalSupply();
   }

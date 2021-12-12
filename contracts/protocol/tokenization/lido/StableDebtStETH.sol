@@ -3,6 +3,11 @@ pragma solidity 0.6.12;
 
 import {StableDebtToken} from '../StableDebtToken.sol';
 
+/**
+ * @notice stETH specific stable debt token implementation.
+ * @dev The StableDebtStETH protects AStETH from usage with stable debt borrowing,
+ *   by overriding mint() method. Method mint() reverts with 'CONTRACT_NOT_ACTIVE' method on call.
+ **/
 contract StableDebtStETH is StableDebtToken {
   constructor(
     address pool,

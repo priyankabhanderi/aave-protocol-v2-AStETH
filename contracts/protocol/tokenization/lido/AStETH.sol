@@ -28,7 +28,6 @@ interface IBookKeptBorrowing {
 /**
  * @title Aave ERC20 AToken
  * @dev Implementation of the interest bearing token for the Aave protocol
- * @author Aave
  */
 contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
   using WadRayMath for uint256;
@@ -116,7 +115,7 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
 
   function initializeDebtToken() external {
     DataTypes.ReserveData memory reserveData = POOL.getReserveData(UNDERLYING_ASSET_ADDRESS);
-    require(address(_variableDebtStETH) == address(0), "ALREADY_INITIALIZED");
+    require(address(_variableDebtStETH) == address(0), 'ALREADY_INITIALIZED');
     _variableDebtStETH = IBookKeptBorrowing(reserveData.variableDebtTokenAddress);
   }
 
@@ -191,7 +190,7 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
     address treasury = RESERVE_TREASURY_ADDRESS;
 
     // Compared to the normal mint, we don't check for rounding errors.
-    // The amount to mint can easily be very small since it is a fraction of the interest ccrued.
+    // The amount to mint can easily be very small since it is a fraction of the interest accrued.
     // In that case, the treasury will experience a (very small) loss, but it
     // wont cause potentially valid transactions to fail.
     uint256 amountScaled = amount.rayDiv(index);
@@ -266,7 +265,6 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
   /**
    * @dev Returns the scaled balance of the user and the scaled total supply.
    * @param user The address of the user
-   * @return The scaled balance of the user
    * @return The scaled balance and the scaled total supply
    **/
   function getScaledUserBalanceAndSupply(address user)
@@ -283,10 +281,9 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
   }
 
   /**
-   * @dev Returns the internal balance of the user and the scaled total supply.
+   * @dev Returns the internal balance of the user and the internal total supply.
    * @param user The address of the user
-   * @return The internal balance of the user
-   * @return The internal balance and the scaled total supply
+   * @return The internal balance and the internal total supply
    **/
   function getInternalUserBalanceAndSupply(address user) external view returns (uint256, uint256) {
     return (super.balanceOf(user), super.totalSupply());
@@ -468,14 +465,14 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
    * @dev balance of user with according to the amount of tokens
    **/
   function _scaledBalanceOf(
-    uint256 _intBalanceOf,
-    uint256 _intTotalSupply,
+    uint256 _internalBalanceOf,
+    uint256 _internalTotalSupply,
     uint256 _scaledTotalSupply
   ) private pure returns (uint256) {
-    if (_intBalanceOf == 0 || _intTotalSupply == 0) {
+    if (_internalBalanceOf == 0 || _internalTotalSupply == 0) {
       return 0;
     }
-    return _intBalanceOf.wadMul(_scaledTotalSupply).wadDiv(_intTotalSupply);
+    return _internalBalanceOf.wadMul(_scaledTotalSupply).wadDiv(_internalTotalSupply);
   }
 
   /**
