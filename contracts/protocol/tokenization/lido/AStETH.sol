@@ -137,7 +137,7 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
     uint256 amountScaled = amount.rayDiv(index);
     require(amountScaled != 0, Errors.CT_INVALID_BURN_AMOUNT);
 
-    _burnScaled(user, amountScaled, _fetchExtData());
+    _burnScaled(user, amountScaled);
     _totalShares = _totalShares.sub(
       ISTETH(UNDERLYING_ASSET_ADDRESS).getSharesByPooledEth(amountScaled).toInt256Safe()
     );
@@ -166,7 +166,7 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
     uint256 amountScaled = amount.rayDiv(index);
     require(amountScaled != 0, Errors.CT_INVALID_MINT_AMOUNT);
 
-    _mintScaled(user, amountScaled, _fetchExtData());
+    _mintScaled(user, amountScaled);
     _totalShares = _totalShares.add(
       ISTETH(UNDERLYING_ASSET_ADDRESS).getSharesByPooledEth(amountScaled).toInt256Safe()
     );
@@ -195,7 +195,7 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
     // In that case, the treasury will experience a (very small) loss, but it
     // wont cause potentially valid transactions to fail.
     uint256 amountScaled = amount.rayDiv(index);
-    _mintScaled(treasury, amountScaled, _fetchExtData());
+    _mintScaled(treasury, amountScaled);
     _totalShares = _totalShares.add(
       ISTETH(UNDERLYING_ASSET_ADDRESS).getSharesByPooledEth(amountScaled).toInt256Safe()
     );
@@ -437,123 +437,16 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
   // =============================================
   // StETH specific functions
 
-  /**
-   * @dev mintAmountInternal is mint such that the following holds true
-   *
-   * (userBalanceInternalBefore+mintAmountInternal)/(totalSupplyInternalBefore+mintAmountInternal)
-   *    = (userBalanceScaledBefore+mintAmountScaled)/(scaledTotalSupplyBefore+mintAmountScaled)
-   *
-   * scaledTotalSupplyAfter = scaledTotalSupplyBefore+mintAmountScaled
-   * userBalanceScaledAfter = userBalanceScaledBefore+mintAmountScaled
-   * otherBalanceScaledBefore = scaledTotalSupplyBefore-userBalanceScaledBefore
-   *
-   * a = totalSupplyInternalBefore * userBalanceScaledAfter
-   * b = scaledTotalSupplyAfter * userBalanceInternalBefore
-   * mintAmountInternal = (a - b) / otherBalanceScaledBefore
-   **/
-  function _mintScaled(
-    address user,
-    uint256 mintAmountScaled,
-    ExtData memory e
-  ) internal {
-    uint256 totalSupplyInternalBefore = super.totalSupply();
-    uint256 userBalanceInternalBefore = super.balanceOf(user);
-
-    // First mint
-    if (totalSupplyInternalBefore == 0) {
-      _mint(user, ISTETH(UNDERLYING_ASSET_ADDRESS).getSharesByPooledEth(mintAmountScaled));
-      return;
-    }
-
-    uint256 scaledTotalSupplyBefore = _scaledTotalSupply(e);
-
-    uint256 userBalanceScaledBefore =
-      _scaledBalanceOf(
-        userBalanceInternalBefore,
-        totalSupplyInternalBefore,
-        scaledTotalSupplyBefore
-      );
-    uint256 otherBalanceScaledBefore = scaledTotalSupplyBefore.sub(userBalanceScaledBefore);
-
-    uint256 scaledTotalSupplyAfter = scaledTotalSupplyBefore.add(mintAmountScaled);
-    uint256 userBalanceScaledAfter = userBalanceScaledBefore.add(mintAmountScaled);
-    uint256 mintAmountInternal = 0;
-
-    // Lone user
-    if (otherBalanceScaledBefore == 0) {
-      uint256 mintAmountInternal =
-        mintAmountScaled.mul(totalSupplyInternalBefore).div(scaledTotalSupplyBefore);
-      _mint(user, mintAmountInternal);
-      return;
-    }
-
-    mintAmountInternal = totalSupplyInternalBefore
-      .mul(userBalanceScaledAfter)
-      .sub(scaledTotalSupplyAfter.mul(userBalanceInternalBefore))
-      .div(otherBalanceScaledBefore);
-
-    _mint(user, mintAmountInternal);
+  function _mintScaled(address user, uint256 amountScaled) internal {
+    uint256 scaledTotalSupply = _scaledTotalSupply(_fetchExtData());
+    uint256 mintAmount =
+      scaledTotalSupply == 0 ? amountScaled : amountScaled.mul(_totalSupply).div(scaledTotalSupply);
+    _mint(user, mintAmount);
   }
 
-  /**
-   * @dev burnAmountInternal is burnt such that the following holds true
-   *
-   * (userBalanceInternalBefore-burnAmountInternal)/(totalSupplyInternalBefore-burnAmountInternal)
-   *    = (userBalanceScaledBefore-burnAmountScaled)/(scaledTotalSupplyBefore-burnAmountScaled)
-   *
-   * scaledTotalSupplyAfter = scaledTotalSupplyBefore-burnAmountScaled
-   * userBalanceScaledAfter = userBalanceScaledBefore-burnAmountScaled
-   * otherBalanceScaledBefore = scaledTotalSupplyBefore-userBalanceScaledBefore
-   *
-   * a = scaledTotalSupplyAfter * userBalanceInternalBefore
-   * b = totalSupplyInternalBefore * userBalanceScaledAfter
-   * burnAmountInternal = (a - b) / otherBalanceScaledBefore
-   **/
-  function _burnScaled(
-    address user,
-    uint256 burnAmountScaled,
-    ExtData memory e
-  ) internal {
-    uint256 totalSupplyInternalBefore = super.totalSupply();
-    uint256 userBalanceInternalBefore = super.balanceOf(user);
-
-    uint256 scaledTotalSupplyBefore = _scaledTotalSupply(e);
-    uint256 userBalanceScaledBefore =
-      _scaledBalanceOf(
-        userBalanceInternalBefore,
-        totalSupplyInternalBefore,
-        scaledTotalSupplyBefore
-      );
-
-    uint256 otherBalanceScaledBefore = 0;
-    if (userBalanceScaledBefore <= scaledTotalSupplyBefore) {
-      otherBalanceScaledBefore = scaledTotalSupplyBefore.sub(userBalanceScaledBefore);
-    }
-
-    uint256 scaledTotalSupplyAfter = 0;
-    if (burnAmountScaled <= scaledTotalSupplyBefore) {
-      scaledTotalSupplyAfter = scaledTotalSupplyBefore.sub(burnAmountScaled);
-    }
-
-    uint256 userBalanceScaledAfter = 0;
-    if (burnAmountScaled <= userBalanceScaledBefore) {
-      userBalanceScaledAfter = userBalanceScaledBefore.sub(burnAmountScaled);
-    }
-
-    uint256 burnAmountInternal = 0;
-
-    // Lone user
-    if (otherBalanceScaledBefore == 0) {
-      _burn(user, burnAmountScaled.mul(totalSupplyInternalBefore).div(scaledTotalSupplyBefore));
-      return;
-    }
-
-    burnAmountInternal = scaledTotalSupplyAfter
-      .mul(userBalanceInternalBefore)
-      .sub(totalSupplyInternalBefore.mul(userBalanceScaledAfter))
-      .div(otherBalanceScaledBefore);
-
-    _burn(user, burnAmountInternal);
+  function _burnScaled(address user, uint256 amountScaled) internal {
+    uint256 mintAmount = amountScaled.mul(_totalSupply).div(_scaledTotalSupply(_fetchExtData()));
+    _burn(user, mintAmount);
   }
 
   /**
