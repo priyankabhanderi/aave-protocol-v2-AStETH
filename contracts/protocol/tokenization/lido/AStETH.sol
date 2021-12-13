@@ -444,8 +444,9 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
   }
 
   function _burnScaled(address user, uint256 amountScaled) internal {
-    uint256 mintAmount = amountScaled.mul(_totalSupply).div(_scaledTotalSupply(_fetchExtData()));
-    _burn(user, mintAmount);
+    uint256 scaledTotalSupply = _scaledTotalSupply(_fetchExtData());
+    uint256 burnAmount = amountScaled.mul(_totalSupply).div(scaledTotalSupply);
+    _burn(user, burnAmount);
   }
 
   /**
