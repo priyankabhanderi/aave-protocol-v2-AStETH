@@ -40,7 +40,7 @@ contract VariableDebtStETH is DebtTokenBase, IVariableDebtToken {
   // ---------------------------------------------------------------------------
   // stETH additions
   // Keeps track of the shares borrowed from the AAVE system
-  int256 private _totalSharesBorrowed;
+  int256 public _totalSharesBorrowed;
 
   // ---------------------------------------------------------------------------
 

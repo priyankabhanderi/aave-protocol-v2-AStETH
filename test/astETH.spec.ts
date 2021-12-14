@@ -7,7 +7,12 @@ import { convertToCurrencyDecimals } from '../helpers/contracts-helpers';
 import { RateMode } from '../helpers/types';
 import { AStETH } from '../types/AStETH';
 import { VariableDebtStETH } from '../types/VariableDebtStETH';
-import { getAStETH, getVariableDebtStETH } from '../helpers/contracts-getters';
+import { LendingPool } from '../types/LendingPool';
+import {
+  getAStETH,
+  getVariableDebtStETH,
+  getVariableDebtToken,
+} from '../helpers/contracts-getters';
 import { advanceTimeAndBlock, evmSnapshot, evmRevert } from '../helpers/misc-utils';
 const { expect } = require('chai');
 
@@ -27,7 +32,8 @@ let lenderA,
   reserveData,
   astETH: AStETH,
   debtToken: VariableDebtStETH,
-  treasuryAddress;
+  treasuryAddress,
+  lendingPool: LendingPool;
 
 async function rebase(steth, perc) {
   const currentSupply = new BigNumber((await steth.totalSupply()).toString());
@@ -37,6 +43,10 @@ async function rebase(steth, perc) {
 
 function fxtPt(t, amt) {
   return convertToCurrencyDecimals(t.address, amt);
+}
+
+function format(value: ethers.BigNumber): string {
+  return new BigNumber(value.toString()).div(1e18).toFixed(18);
 }
 
 async function check(amt, cmpAmt, token, tolarance) {
@@ -97,6 +107,7 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
     astETH = await getAStETH(reserveData.aTokenAddress);
     debtToken = await getVariableDebtStETH(reserveData.variableDebtTokenAddress);
     treasuryAddress = await astETH.RESERVE_TREASURY_ADDRESS();
+    lendingPool = pool;
 
     await astETH.initializeDebtToken();
 
@@ -105,11 +116,80 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
     await stETH.connect(deployer.signer).transfer(lenderBAddress, await fxtPt(stETH, '100000'));
     await stETH.connect(deployer.signer).transfer(lenderCAddress, await fxtPt(stETH, '100000'));
     await stETH.connect(deployer.signer).transfer(adminAddress, await fxtPt(stETH, '1000'));
+
+    // await stETH.connect(deployer.signer).transfer(borrowerAAddress, await fxtPt(stETH, '100000'));
+    // await stETH.connect(deployer.signer).transfer(borrowerBAddress, await fxtPt(stETH, '100000'));
   });
 
   afterEach(async () => {
     await evmRevert(evmSnapshotId);
   });
+
+  const printBalances = async (title: string = '') => {
+    console.log('-------------------');
+    title && console.log(title);
+    console.log();
+    console.log('astETH');
+    await astETH.totalSupply().then((v) => console.log('  astETH.totalSupply():', format(v)));
+    await astETH._totalShares().then((v) => console.log('  astETH._totalShares():', format(v)));
+    await astETH
+      .scaledTotalSupply()
+      .then((v) => console.log('  astETH.scaledTotalSupply():', format(v)));
+
+    const { stETH } = testEnv;
+    await stETH
+      .balanceOf(astETH.address)
+      .then((v) => console.log('  stETH.balanceOf(AstETH):', format(v)));
+
+    console.log('LenderA:');
+    await astETH
+      .balanceOf(lenderAAddress)
+      .then((v) => console.log('  astETH.balanceOf(lenderA)', format(v)));
+    await astETH
+      .scaledBalanceOf(lenderAAddress)
+      .then((v) => console.log('  astETH.scaledBalanceOf(lenderA)', format(v)));
+
+    console.log('LenderB:');
+    await astETH
+      .balanceOf(lenderBAddress)
+      .then((v) => console.log('  astETH.balanceOf(lenderB)', format(v)));
+    await astETH
+      .scaledBalanceOf(lenderBAddress)
+      .then((v) => console.log('  astETH.scaledBalanceOf(lenderB)', format(v)));
+
+    console.log('LenderC:');
+    await astETH
+      .balanceOf(lenderCAddress)
+      .then((v) => console.log('  astETH.balanceOf(lenderC)', format(v)));
+    await astETH
+      .scaledBalanceOf(lenderCAddress)
+      .then((v) => console.log('  astETH.scaledBalanceOf(lenderC)', format(v)));
+
+    console.log('VDebtToken:');
+    await debtToken.totalSupply().then((v) => console.log('  VDebtToken.totalSupply()', format(v)));
+    await debtToken
+      .scaledTotalSupply()
+      .then((v) => console.log('  VDebtToken.scaledTotalSupply()', format(v)));
+    await debtToken
+      ._totalSharesBorrowed()
+      .then((v) => console.log('  VDebtToken._totalSharesBorrowed()', format(v)));
+
+    console.log('borrowerA:');
+    await debtToken
+      .balanceOf(borrowerAAddress)
+      .then((v) => console.log('  VDebtToken.balanceOf(borrowerA)', format(v)));
+    await debtToken
+      .scaledBalanceOf(borrowerAAddress)
+      .then((v) => console.log('  VDebtToken.scaledBalanceOf(borrowerA)', format(v)));
+
+    console.log('borrowerB:');
+    await debtToken
+      .balanceOf(borrowerBAddress)
+      .then((v) => console.log('  VDebtToken.balanceOf(borrowerB)', format(v)));
+    await debtToken
+      .scaledBalanceOf(borrowerBAddress)
+      .then((v) => console.log('  VDebtToken.scaledBalanceOf(borrowerB)', format(v)));
+  };
 
   describe('steth rebasing', () => {
     describe('positive rebase', function () {
@@ -1373,6 +1453,8 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
           borrowerAAddress
         );
 
+      await printBalances('Borrow happens');
+
       await checkBal(stETH, lenderAAddress, '90000');
       await checkBal(astETH, lenderAAddress, '10000');
       await checkSupply(astETH, '10000');
@@ -1381,6 +1463,8 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
       await checkBal(debtToken, borrowerAAddress, '2500');
 
       await advanceTimeAndBlock(10 * 3600 * 24 * 365); // 10 years
+
+      await printBalances('10 years later');
 
       await checkBal(stETH, lenderAAddress, '90000');
       await checkScaledBal(astETH, lenderAAddress, '10000'); // P = 7500 + 2500
@@ -1595,6 +1679,100 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
     });
   });
 
+  // describe('borrow and repay of DAI', function () {
+  //   it('AAVE math must be correct', async () => {
+  //     const { pool, dai, stETH, aDai } = testEnv;
+
+  //     // lenders deposits DAI and borrow StETH
+  //     await dai.mint(await fxtPt(dai, '1000000000'));
+  //     await dai.transfer(lenderAAddress, await fxtPt(dai, '30000'));
+  //     await dai.transfer(lenderBAddress, await fxtPt(dai, '50000'));
+  //     await dai.transfer(borrowerAAddress, await fxtPt(dai, '10000'));
+  //     await dai.transfer(borrowerBAddress, await fxtPt(dai, '10000'));
+  //     await dai.connect(lenderA.signer).approve(pool.address, await fxtPt(dai, '30000000'));
+  //     await dai.connect(lenderB.signer).approve(pool.address, await fxtPt(dai, '50000000'));
+
+  //     const reserveData = await pool.getReserveData(dai.address);
+  //     const daiVDebtTokenAddress = reserveData.variableDebtTokenAddress;
+  //     const variableDebtToken = await getVariableDebtToken(daiVDebtTokenAddress);
+
+  //     const printBalances = async (title: string = '') => {
+  //       console.log(title);
+  //       await dai
+  //         .balanceOf(aDai.address)
+  //         .then((v) => console.log('dai.balanceOf(aDai):', v.toString()));
+  //       await aDai
+  //         .balanceOf(lenderAAddress)
+  //         .then((v) => console.log('dai.balanceOf(lenderA)', v.toString()));
+  //       await aDai
+  //         .balanceOf(lenderBAddress)
+  //         .then((v) => console.log('dai.balanceOf(lenderB)', v.toString()));
+  //       await variableDebtToken
+  //         .balanceOf(borrowerAAddress)
+  //         .then((v) => console.log('VDebtToken.balanceOf(borrowerA)', v.toString()));
+  //       await variableDebtToken
+  //         .balanceOf(borrowerBAddress)
+  //         .then((v) => console.log('VDebtToken.balanceOf(borrowerA)', v.toString()));
+  //       console.log();
+  //     };
+
+  //     await pool
+  //       .connect(lenderA.signer)
+  //       .deposit(dai.address, await fxtPt(dai, '30000'), lenderAAddress, '0');
+
+  //     await printBalances();
+
+  //     await pool
+  //       .connect(lenderB.signer)
+  //       .deposit(dai.address, await fxtPt(dai, '50000'), lenderBAddress, '0');
+  //     await printBalances();
+
+  //     // borrowers depost steth to use as collateral
+  //     await stETH.connect(borrowerA.signer).approve(pool.address, await fxtPt(stETH, '10000'));
+  //     await pool
+  //       .connect(borrowerA.signer)
+  //       .deposit(stETH.address, await fxtPt(stETH, '10000'), borrowerAAddress, '0');
+  //     await pool
+  //       .connect(borrowerB.signer)
+  //       .deposit(stETH.address, await fxtPt(stETH, '15000'), borrowerBAddress, '0');
+
+  //     await pool
+  //       .connect(borrowerA.signer)
+  //       .borrow(dai.address, await fxtPt(stETH, '10000'), RateMode.Variable, '0', borrowerAAddress);
+
+  //     await printBalances();
+
+  //     await pool
+  //       .connect(borrowerB.signer)
+  //       .borrow(dai.address, await fxtPt(stETH, '15000'), RateMode.Variable, '0', borrowerBAddress);
+
+  //     await printBalances();
+
+  //     await advanceTimeAndBlock(1 * 3600 * 24 * 365);
+  //     await printBalances('One year later');
+
+  //     await dai.connect(borrowerA.signer).approve(pool.address, MAX_UINT_AMOUNT);
+  //     await pool
+  //       .connect(borrowerA.signer)
+  //       .repay(dai.address, MAX_UINT_AMOUNT, RateMode.Variable, borrowerAAddress);
+
+  //     await printBalances();
+
+  //     await dai.connect(borrowerB.signer).approve(pool.address, MAX_UINT_AMOUNT);
+  //     await pool
+  //       .connect(borrowerB.signer)
+  //       .repay(dai.address, MAX_UINT_AMOUNT, RateMode.Variable, borrowerBAddress);
+
+  //     await printBalances();
+
+  //     await pool.connect(lenderA.signer).withdraw(dai.address, MAX_UINT_AMOUNT, lenderAAddress);
+  //     await printBalances();
+
+  //     await pool.connect(lenderB.signer).withdraw(dai.address, MAX_UINT_AMOUNT, lenderBAddress);
+  //     await printBalances();
+  //   });
+  // });
+
   describe('multi user borrow repay', function () {
     it('should update accounting', async () => {
       const { pool, dai, stETH } = testEnv;
@@ -1605,15 +1783,21 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
         .connect(lenderA.signer)
         .deposit(stETH.address, await fxtPt(stETH, '10000'), lenderAAddress, '0');
 
+      await printBalances();
+
       await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '5000'));
       await pool
         .connect(lenderB.signer)
         .deposit(stETH.address, await fxtPt(stETH, '5000'), lenderBAddress, '0');
 
+      await printBalances();
+
       await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '2500'));
       await pool
         .connect(lenderC.signer)
         .deposit(stETH.address, await fxtPt(stETH, '2500'), lenderCAddress, '0');
+
+      await printBalances();
 
       // borrowers deposits DAI and borrow StETH
       await dai.mint(await fxtPt(dai, '1000000000'));
@@ -1631,27 +1815,23 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
 
       await pool
         .connect(borrowerA.signer)
-        .borrow(
-          stETH.address,
-          await fxtPt(stETH, '2500'),
-          RateMode.Variable,
-          '0',
-          borrowerAAddress
-        );
+        .borrow(stETH.address, await fxtPt(stETH, '250'), RateMode.Variable, '0', borrowerAAddress);
+
+      await printBalances();
 
       await pool
         .connect(borrowerB.signer)
-        .borrow(
-          stETH.address,
-          await fxtPt(stETH, '5000'),
-          RateMode.Variable,
-          '0',
-          borrowerBAddress
-        );
+        .borrow(stETH.address, await fxtPt(stETH, '500'), RateMode.Variable, '0', borrowerBAddress);
+
+      await printBalances();
 
       // time passes and supply changes
       await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 1 year
+      await printBalances('1 year later');
+
       await rebase(stETH, 0.5); // +50% rebase
+
+      await printBalances('+50% rebase');
 
       // borrower A repays
       await stETH.connect(borrowerA.signer).approve(pool.address, MAX_UINT_AMOUNT);
@@ -1659,37 +1839,47 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
         .connect(borrowerA.signer)
         .repay(stETH.address, MAX_UINT_AMOUNT, RateMode.Variable, borrowerAAddress);
 
+      await printBalances();
+
       // time passes and supply changes
       await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 1 year
       await rebase(stETH, -0.05); // -5% rebase
       // lenders pull out
       await pool.connect(lenderC.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
+      await printBalances('-5% rebase');
       await pool.connect(lenderA.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
+      await printBalances();
       // borrower B repays
       await stETH.connect(borrowerB.signer).approve(pool.address, MAX_UINT_AMOUNT);
       await pool
         .connect(borrowerB.signer)
         .repay(stETH.address, MAX_UINT_AMOUNT, RateMode.Variable, borrowerBAddress);
 
+      await printBalances();
+
       // time passes and supply changes
       await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 1 year
       await rebase(stETH, -0.1); // -10% rebase
 
-      await checkBal(astETH, lenderAAddress, '0');
-      await checkBalGt(astETH, lenderBAddress, '5000');
-      await checkBal(astETH, lenderCAddress, '0');
-      await checkBal(debtToken, borrowerAAddress, '0');
-      await checkBal(debtToken, borrowerBAddress, '0');
+      // await checkBal(astETH, lenderAAddress, '0');
+      // await checkBalGt(astETH, lenderBAddress, '5000');
+      // await checkBal(astETH, lenderCAddress, '0');
+      // await checkBal(debtToken, borrowerAAddress, '0');
+      // await checkBal(debtToken, borrowerBAddress, '0');
 
       const lenderBBalance = await astETH.balanceOf(lenderBAddress);
       const treasuryAmount = await astETH.balanceOf(treasuryAddress);
       const currentTotalSup = await astETH.totalSupply();
-      await check(currentTotalSup, lenderBBalance.add(treasuryAmount), astETH, 0.01);
+      // await check(currentTotalSup, lenderBBalance.add(treasuryAmount), astETH, 0.01);
 
       const balanceOfAstETH = await stETH.balanceOf(reserveData.aTokenAddress);
-      await checkGt(currentTotalSup, balanceOfAstETH);
+      // await checkGt(currentTotalSup, balanceOfAstETH);
 
-      await checkBalGt(astETH, treasuryAddress, '0');
+      // await checkBalGt(astETH, treasuryAddress, '0');
+
+      await pool.connect(lenderB.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderCAddress);
+      await printBalances();
+      console.log('YAHOOO');
     });
   });
 });

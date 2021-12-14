@@ -56,7 +56,7 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
   // =============================================
   // StETH specific data
   IBookKeptBorrowing internal _variableDebtStETH;
-  int256 internal _totalShares;
+  int256 public _totalShares;
 
   struct ExtData {
     uint256 totalStETHSupply;
