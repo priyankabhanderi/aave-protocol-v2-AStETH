@@ -23,6 +23,10 @@ interface IBookKeptBorrowing {
    * @dev get (total supply of borrowing, current amount of borrowed shares)
    **/
   function getBorrowData() external view returns (uint256, int256);
+
+  function totalSupply() external view returns (uint256);
+
+  function scaledTotalSupply() external view returns (uint256);
 }
 
 /**
@@ -138,7 +142,7 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
 
     _burnScaled(user, amountScaled, _fetchExtData());
     _totalShares = _totalShares.sub(
-      ISTETH(UNDERLYING_ASSET_ADDRESS).getSharesByPooledEth(amountScaled).toInt256Safe()
+      ISTETH(UNDERLYING_ASSET_ADDRESS).getSharesByPooledEth(amount).toInt256Safe()
     );
 
     IERC20(UNDERLYING_ASSET_ADDRESS).safeTransfer(receiverOfUnderlying, amount);
@@ -167,7 +171,7 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
 
     _mintScaled(user, amountScaled, _fetchExtData());
     _totalShares = _totalShares.add(
-      ISTETH(UNDERLYING_ASSET_ADDRESS).getSharesByPooledEth(amountScaled).toInt256Safe()
+      ISTETH(UNDERLYING_ASSET_ADDRESS).getSharesByPooledEth(amount).toInt256Safe()
     );
 
     emit Transfer(address(0), user, amount);
@@ -196,7 +200,7 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
     uint256 amountScaled = amount.rayDiv(index);
     _mintScaled(treasury, amountScaled, _fetchExtData());
     _totalShares = _totalShares.add(
-      ISTETH(UNDERLYING_ASSET_ADDRESS).getSharesByPooledEth(amountScaled).toInt256Safe()
+      ISTETH(UNDERLYING_ASSET_ADDRESS).getSharesByPooledEth(amount).toInt256Safe()
     );
 
     emit Transfer(address(0), treasury, amount);
@@ -464,7 +468,7 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
       return;
     }
 
-    uint256 scaledTotalSupplyBefore = _scaledTotalSupply(e);
+    uint256 scaledTotalSupplyBefore = _scaledTotalSupply(e); //.sub(mintAmountScaled);
 
     uint256 userBalanceScaledBefore =
       _scaledBalanceOf(
@@ -590,10 +594,22 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
    *      _scaledTotalSupply = heldStETH + _borrowedStETH
    **/
   function _scaledTotalSupply(ExtData memory e) private view returns (uint256) {
+    // return
+    // ISTETH(UNDERLYING_ASSET_ADDRESS)
+    //   .balanceOf(address(this))
+    //   .add(_variableDebtStETH.totalSupply())
+    //   .rayDiv(POOL.getReserveNormalizedIncome(UNDERLYING_ASSET_ADDRESS));
     return
-      ISTETH(UNDERLYING_ASSET_ADDRESS).getPooledEthByShares(
+      ISTETH(UNDERLYING_ASSET_ADDRESS)
+        .getPooledEthByShares(
+        // _totalShares = shares(stETH/normalizedIncome)
+        // e.totalSharesBorrowed = shares(stETH/normalizedIncome)
+        // e.totalPrincipalBorrowed = stETH/normalizedIncome
         uint256(_totalShares - e.totalSharesBorrowed)
-      ) + e.totalPrincipalBorrowed;
+      )
+        .add(_variableDebtStETH.totalSupply())
+        .rayDiv(POOL.getReserveNormalizedIncome(UNDERLYING_ASSET_ADDRESS));
+    // .add(e.totalPrincipalBorrowed);
   }
 
   /**

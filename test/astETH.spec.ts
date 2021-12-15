@@ -33,6 +33,7 @@ let lenderA,
   astETH: AStETH,
   debtToken: VariableDebtStETH,
   treasuryAddress,
+  aDaiTreasuryAddress,
   lendingPool: LendingPool;
 
 async function rebase(steth, perc) {
@@ -45,8 +46,8 @@ function fxtPt(t, amt) {
   return convertToCurrencyDecimals(t.address, amt);
 }
 
-function format(value: ethers.BigNumber): string {
-  return new BigNumber(value.toString()).div(1e18).toFixed(18);
+function format(value: ethers.BigNumber, decimals: number = 1e18): string {
+  return new BigNumber(value.toString()).div(decimals).toFixed(18);
 }
 
 async function check(amt, cmpAmt, token, tolarance) {
@@ -87,7 +88,7 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
   beforeEach(async () => {
     evmSnapshotId = await evmSnapshot();
 
-    const { users, stETH, deployer, pool } = testEnv;
+    const { users, stETH, deployer, pool, weth, aDai } = testEnv;
 
     lenderA = users[1];
     lenderB = users[2];
@@ -107,6 +108,7 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
     astETH = await getAStETH(reserveData.aTokenAddress);
     debtToken = await getVariableDebtStETH(reserveData.variableDebtTokenAddress);
     treasuryAddress = await astETH.RESERVE_TREASURY_ADDRESS();
+    aDaiTreasuryAddress = await aDai.RESERVE_TREASURY_ADDRESS();
     lendingPool = pool;
 
     await astETH.initializeDebtToken();
@@ -117,8 +119,12 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
     await stETH.connect(deployer.signer).transfer(lenderCAddress, await fxtPt(stETH, '100000'));
     await stETH.connect(deployer.signer).transfer(adminAddress, await fxtPt(stETH, '1000'));
 
-    // await stETH.connect(deployer.signer).transfer(borrowerAAddress, await fxtPt(stETH, '100000'));
-    // await stETH.connect(deployer.signer).transfer(borrowerBAddress, await fxtPt(stETH, '100000'));
+    await weth.connect(deployer.signer).mint(await fxtPt(weth, '1000000000'));
+    await weth.connect(deployer.signer).transfer(borrowerAAddress, await fxtPt(weth, '100000'));
+    await weth.connect(deployer.signer).transfer(borrowerBAddress, await fxtPt(weth, '100000'));
+
+    await stETH.connect(deployer.signer).transfer(borrowerAAddress, await fxtPt(stETH, '100000'));
+    await stETH.connect(deployer.signer).transfer(borrowerBAddress, await fxtPt(stETH, '100000'));
   });
 
   afterEach(async () => {
@@ -148,6 +154,9 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
     await astETH
       .scaledBalanceOf(lenderAAddress)
       .then((v) => console.log('  astETH.scaledBalanceOf(lenderA)', format(v)));
+    await astETH
+      ._balances(lenderAAddress)
+      .then((v) => console.log('  astETH._balances(lenderA)', format(v)));
 
     console.log('LenderB:');
     await astETH
@@ -156,6 +165,9 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
     await astETH
       .scaledBalanceOf(lenderBAddress)
       .then((v) => console.log('  astETH.scaledBalanceOf(lenderB)', format(v)));
+    await astETH
+      ._balances(lenderBAddress)
+      .then((v) => console.log('  astETH._balances(lenderB)', format(v)));
 
     console.log('LenderC:');
     await astETH
@@ -164,6 +176,9 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
     await astETH
       .scaledBalanceOf(lenderCAddress)
       .then((v) => console.log('  astETH.scaledBalanceOf(lenderC)', format(v)));
+    await astETH
+      ._balances(lenderCAddress)
+      .then((v) => console.log('  astETH._balances(lenderC)', format(v)));
 
     console.log('VDebtToken:');
     await debtToken.totalSupply().then((v) => console.log('  VDebtToken.totalSupply()', format(v)));
@@ -173,6 +188,9 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
     await debtToken
       ._totalSharesBorrowed()
       .then((v) => console.log('  VDebtToken._totalSharesBorrowed()', format(v)));
+    await debtToken
+      ._totalPrincipalBorrowed()
+      .then((v) => console.log('  VDebtToken._totalPrincipalBorrowed()', format(v)));
 
     console.log('borrowerA:');
     await debtToken
@@ -181,6 +199,9 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
     await debtToken
       .scaledBalanceOf(borrowerAAddress)
       .then((v) => console.log('  VDebtToken.scaledBalanceOf(borrowerA)', format(v)));
+    await debtToken
+      ._stEthBalances(borrowerAAddress)
+      .then((v) => console.log('  VDebtToken._stEthBalances(borrowerA)', format(v)));
 
     console.log('borrowerB:');
     await debtToken
@@ -189,1615 +210,1782 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
     await debtToken
       .scaledBalanceOf(borrowerBAddress)
       .then((v) => console.log('  VDebtToken.scaledBalanceOf(borrowerB)', format(v)));
+    await debtToken
+      ._stEthBalances(borrowerBAddress)
+      .then((v) => console.log('  VDebtToken._stEthBalances(borrowerA)', format(v)));
+
+    console.log('Liquidity indices:');
+    await testEnv.pool
+      .getReserveNormalizedIncome(stETH.address)
+      .then((v) => console.log('  Reserve normalized income', format(v, 1e27)));
+    await testEnv.pool
+      .getReserveNormalizedVariableDebt(stETH.address)
+      .then((v) => console.log('  Reserve normalized variable debt', format(v, 1e27)));
+    console.log();
   };
 
-  describe('steth rebasing', () => {
-    describe('positive rebase', function () {
-      it('should update total supply correctly', async () => {
-        const { stETH } = testEnv;
-
-        const currentSupply = new BigNumber((await stETH.totalSupply()).toString());
-        const supplyDelta = currentSupply.multipliedBy(+0.1);
-        await rebase(stETH, +0.1);
-        const afterBalance = currentSupply.plus(supplyDelta);
-        const newTotalSupply = await stETH.totalSupply();
-
-        expect(newTotalSupply.toString()).to.be.equal(afterBalance.toString(10));
-      });
-    });
-    describe('negative rebase', function () {
-      it('should update total supply correctly', async () => {
-        const { stETH } = testEnv;
-
-        const currentSupply = new BigNumber((await stETH.totalSupply()).toString());
-        const supplyDelta = currentSupply.multipliedBy(-0.1);
-        await rebase(stETH, -0.1);
-        const afterBalance = currentSupply.plus(supplyDelta);
-        const newTotalSupply = await stETH.totalSupply();
-
-        expect(newTotalSupply.toString()).to.be.equal(afterBalance.toString(10));
-      });
-    });
-  });
-
-  describe('user Transfer', () => {
-    describe('when lenderA deposits 1000 StETH, transfers all to himself', function () {
-      it('should update balances correctly', async () => {
-        const { pool, stETH } = testEnv;
-
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000'));
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
-
-        const beforeBalance = await astETH.scaledBalanceOf(lenderAAddress);
-        await astETH
-          .connect(lenderA.signer)
-          .transfer(lenderAAddress, await astETH.balanceOf(lenderAAddress));
-        const afterBalance = await astETH.scaledBalanceOf(lenderAAddress);
-
-        expect(beforeBalance.toString()).to.be.equal(afterBalance.toString());
-      });
-    });
-
-    describe('the single deposit after rebase', function () {
-      it('should update balances correctly', async () => {
-        const { pool, stETH } = testEnv;
-
-        await rebase(stETH, 1.0);
-
-        // the single deposit for lender A
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '13'));
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '13'), lenderA.address, '0');
-
-        await checkBal(astETH, lenderA.address, '13');
-      });
-    });
-
-    describe('the first deposit after rebase for lender', function () {
-      it('should update balances correctly', async () => {
-        const { pool, stETH } = testEnv;
-
-        await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '97'));
-        await pool
-          .connect(lenderB.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '97'), lenderB.address, '0');
-
-        await rebase(stETH, 1.0);
-
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '13'));
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '13'), lenderA.address, '0');
-
-        let balances = await astETH.getScaledUserBalanceAndSupply(lenderAAddress);
-
-        let expectedAmount = await fxtPt(astETH, '13');
-        expect(balances[0].toString()).to.be.equal(expectedAmount.toString());
-
-        expectedAmount = await fxtPt(astETH, '207');
-        expect(balances[1].toString()).to.be.equal(expectedAmount.toString());
-
-        await checkBal(astETH, lenderA.address, '13');
-      });
-    });
-
-    describe('several sequintial deposits', function () {
-      it('should mint aTokens correctly', async () => {
-        const { pool, stETH } = testEnv;
-
-        // the first deposit for A
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '7'));
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '7'), lenderA.address, '0');
-
-        // the single deposit for B
-        await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '11'));
-        await pool
-          .connect(lenderB.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '11'), lenderB.address, '0');
-
-        let balances = await astETH.getScaledUserBalanceAndSupply(lenderAAddress);
-
-        let expectedAmount = await fxtPt(astETH, '7');
-        expect(balances[0].toString()).to.be.equal(expectedAmount.toString());
-
-        expectedAmount = await fxtPt(astETH, '18');
-        expect(balances[1].toString()).to.be.equal(expectedAmount.toString());
-
-        await advanceTimeAndBlock(3600 * 24 * 14); // 2 weeks
-
-        // the second deposit for A
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '3'));
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '3'), lenderA.address, '0');
-
-        await checkBal(astETH, lenderA.address, '10');
-
-        balances = await astETH.getScaledUserBalanceAndSupply(lenderAAddress);
-
-        expectedAmount = await fxtPt(astETH, '10');
-        expect(balances[0].toString()).to.be.equal(expectedAmount.toString());
-
-        expectedAmount = await fxtPt(astETH, '21');
-        expect(balances[1].toString()).to.be.equal(expectedAmount.toString());
-      });
-    });
-
-    describe('deposit->borrow->rebase->repay->deposit->rebase', function () {
-      it('should mint aToken correctly', async () => {
-        const { pool, stETH, dai } = testEnv;
-
-        // deposit
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1'));
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '1'), lenderA.address, '0');
-        // borrow
-        await dai.mint(await fxtPt(dai, '400'));
-        await dai.transfer(borrowerA.address, await fxtPt(dai, '400'));
-        await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '400'));
-        await pool
-          .connect(borrowerA.signer)
-          .deposit(dai.address, await fxtPt(dai, '400'), borrowerA.address, '0');
-        await pool
-          .connect(borrowerA.signer)
-          .borrow(
-            stETH.address,
-            await fxtPt(stETH, '0.5'),
-            RateMode.Variable,
-            '0',
-            borrowerA.address
-          );
-
-        await checkBal(stETH, lenderA.address, '99999');
-        await checkBal(astETH, lenderA.address, '1');
-
-        await checkBal(stETH, lenderB.address, '100000');
-        await checkBal(astETH, lenderB.address, '0');
-
-        await checkBal(stETH, borrowerA.address, '0.5');
-        await checkBal(debtToken, borrowerA.address, '0.5');
-
-        await checkBal(stETH, astETH.address, '0.5');
-
-        // rebase
-        await rebase(stETH, +1.0); // + 100%
-
-        await checkBal(stETH, lenderA.address, '199998');
-        await checkBal(astETH, lenderA.address, '1.5');
-
-        await checkBal(stETH, lenderB.address, '200000');
-        await checkBal(astETH, lenderB.address, '0');
-
-        await checkBal(stETH, borrowerA.address, '1');
-        await checkBal(debtToken, borrowerA.address, '0.5');
-
-        await checkBal(stETH, astETH.address, '1');
-
-        // repay
-        await stETH.connect(borrowerA.signer).approve(pool.address, await fxtPt(stETH, '1'));
-        await pool
-          .connect(borrowerA.signer)
-          .repay(stETH.address, await fxtPt(stETH, '1'), RateMode.Variable, borrowerA.address);
-
-        await checkBal(stETH, lenderA.address, '199998');
-        await checkBal(astETH, lenderA.address, '1.5');
-
-        await checkBal(stETH, lenderB.address, '200000');
-        await checkBal(astETH, lenderB.address, '0');
-
-        await checkBalGt(stETH, borrowerA.address, '0');
-        await checkBal(debtToken, borrowerA.address, '0');
-
-        await checkBal(stETH, astETH.address, '1.5');
-
-        // deposit
-        await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '1'));
-        await pool
-          .connect(lenderB.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '1'), lenderB.address, '0');
-
-        await checkBal(stETH, lenderA.address, '199998');
-        await checkBal(astETH, lenderA.address, '1.5');
-
-        await checkBal(stETH, lenderB.address, '199999');
-        await checkBal(astETH, lenderB.address, '1');
-
-        await checkBalGt(stETH, borrowerA.address, '0');
-        await checkBal(debtToken, borrowerA.address, '0');
-
-        await checkBal(stETH, astETH.address, '2.5');
-
-        // rebase
-        await rebase(stETH, +1.0); // + 100%
-
-        await checkBal(stETH, lenderA.address, '399996');
-        await checkBal(astETH, lenderA.address, '3');
-
-        await checkBal(stETH, lenderB.address, '399998');
-        await checkBal(astETH, lenderB.address, '2');
-
-        await checkBalGt(stETH, borrowerA.address, '0');
-        await checkBal(debtToken, borrowerA.address, '0');
-
-        await checkBal(stETH, astETH.address, '5');
-      });
-    });
-
-    describe('when lenderA deposits 1000 StETH, transfers more than he has', function () {
-      it('should update balances correctly', async () => {
-        const { pool, stETH } = testEnv;
-
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000'));
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
-
-        await expect(
-          astETH.connect(lenderA.signer).transfer(lenderAAddress, await fxtPt(stETH, '1001'))
-        ).to.be.revertedWith('transfer amount exceeds balance');
-      });
-    });
-
-    describe('when borrowed amount > 0', function () {
-      describe('when lenderA deposits 1000 StETH, transfers all to himself', function () {
-        it('should update balances correctly', async () => {
-          const { pool, dai, stETH } = testEnv;
-
-          await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000'));
-          await pool
-            .connect(lenderA.signer)
-            .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
-
-          await dai.mint(await fxtPt(dai, '200000'));
-          await dai.transfer(borrowerAAddress, await fxtPt(dai, '200000'));
-          await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '200000'));
-          await pool
-            .connect(borrowerA.signer)
-            .deposit(dai.address, await fxtPt(dai, '200000'), borrowerAAddress, '0');
-
-          await pool
-            .connect(borrowerA.signer)
-            .borrow(
-              stETH.address,
-              await fxtPt(stETH, '250'),
-              RateMode.Variable,
-              '0',
-              borrowerAAddress
-            );
-
-          const beforeBalance = await astETH.scaledBalanceOf(lenderAAddress);
-          await astETH
-            .connect(lenderA.signer)
-            .transfer(lenderAAddress, await astETH.balanceOf(lenderAAddress));
-          const afterBalance = await astETH.scaledBalanceOf(lenderAAddress);
-
-          expect(beforeBalance.toString()).to.be.equal(afterBalance.toString());
-        });
-      });
-
-      describe('when lenderA deposits 1000 StETH, transfers more than he has', function () {
-        it('should update balances correctly', async () => {
-          const { pool, dai, stETH } = testEnv;
-
-          await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000'));
-          await pool
-            .connect(lenderA.signer)
-            .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
-
-          await dai.mint(await fxtPt(dai, '200000'));
-          await dai.transfer(borrowerAAddress, await fxtPt(dai, '200000'));
-          await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '200000'));
-          await pool
-            .connect(borrowerA.signer)
-            .deposit(dai.address, await fxtPt(dai, '200000'), borrowerAAddress, '0');
-
-          await pool
-            .connect(borrowerA.signer)
-            .borrow(
-              stETH.address,
-              await fxtPt(stETH, '250'),
-              RateMode.Variable,
-              '0',
-              borrowerAAddress
-            );
-
-          await expect(
-            astETH.connect(lenderA.signer).transfer(lenderAAddress, await fxtPt(stETH, '1001'))
-          ).to.be.revertedWith('transfer amount exceeds balance');
-        });
-      });
-    });
-  });
-
-  describe('user deposit', function () {
-    describe('first deposit', function () {
-      it('should mint correct number of astETH tokens', async () => {
-        const { pool, stETH } = testEnv;
-
-        await checkBal(stETH, lenderAAddress, '100000');
-        await checkBal(astETH, lenderAAddress, '0');
-        await checkBal(stETH, reserveData.aTokenAddress, '0');
-        await checkSupply(astETH, '0');
-
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000'));
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
-
-        expect(await astETH.balanceOf(lenderAAddress)).to.eq(await fxtPt(stETH, '1000'));
-
-        await checkBal(stETH, lenderAAddress, '99000');
-        await checkBal(astETH, lenderAAddress, '1000');
-        await checkBal(stETH, reserveData.aTokenAddress, '1000');
-        await checkSupply(astETH, '1000');
-      });
-
-      it('should update balances after positive rebase', async () => {
-        const { pool, stETH } = testEnv;
-
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000'));
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
-
-        await checkBal(stETH, lenderAAddress, '99000');
-        await checkBal(astETH, lenderAAddress, '1000');
-        await checkBal(stETH, reserveData.aTokenAddress, '1000');
-        await checkSupply(astETH, '1000');
-
-        await rebase(stETH, 0.1); // + 10%
-
-        expect(await astETH.balanceOf(lenderAAddress)).to.eq(await fxtPt(stETH, '1100'));
-
-        await checkBal(stETH, lenderAAddress, '108900');
-        await checkBal(astETH, lenderAAddress, '1100');
-        await checkBal(stETH, reserveData.aTokenAddress, '1100');
-        await checkSupply(astETH, '1100');
-      });
-
-      it('should update balances after negative rebase', async () => {
-        const { pool, stETH } = testEnv;
-
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000'));
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
-
-        await checkBal(stETH, lenderAAddress, '99000');
-        await checkBal(astETH, lenderAAddress, '1000');
-        await checkBal(stETH, reserveData.aTokenAddress, '1000');
-        await checkSupply(astETH, '1000');
-
-        await rebase(stETH, -0.1); // - 10%
-
-        expect(await astETH.balanceOf(lenderAAddress)).to.eq(await fxtPt(stETH, '900'));
-
-        await checkBal(stETH, lenderAAddress, '89100');
-        await checkBal(astETH, lenderAAddress, '900');
-        await checkBal(stETH, reserveData.aTokenAddress, '900');
-        await checkSupply(astETH, '900');
-      });
-
-      it('should update balances after neutral rebase', async () => {
-        const { pool, stETH } = testEnv;
-
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000'));
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
-
-        await checkBal(stETH, lenderAAddress, '99000');
-        await checkBal(astETH, lenderAAddress, '1000');
-        await checkBal(stETH, reserveData.aTokenAddress, '1000');
-        await checkSupply(astETH, '1000');
-
-        await rebase(stETH, 0);
-
-        expect(await astETH.balanceOf(lenderAAddress)).to.eq(await fxtPt(stETH, '1000'));
-
-        await checkBal(stETH, lenderAAddress, '99000');
-        await checkBal(astETH, lenderAAddress, '1000');
-        await checkBal(stETH, reserveData.aTokenAddress, '1000');
-        await checkSupply(astETH, '1000');
-      });
-    });
-
-    describe('lone user', function () {
-      it('should mint correct number of astETH tokens', async () => {
-        const { pool, stETH } = testEnv;
-
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '11000'));
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
-
-        await checkBal(stETH, lenderAAddress, '99000');
-        await checkBal(astETH, lenderAAddress, '1000');
-        await checkBal(stETH, reserveData.aTokenAddress, '1000');
-        await checkSupply(astETH, '1000');
-
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '10000'), lenderAAddress, '0');
-
-        expect(await astETH.balanceOf(lenderAAddress)).to.eq(await fxtPt(stETH, '11000'));
-
-        await checkBal(stETH, lenderAAddress, '89000');
-        await checkBal(astETH, lenderAAddress, '11000');
-        await checkBal(stETH, reserveData.aTokenAddress, '11000');
-        await checkSupply(astETH, '11000');
-      });
-
-      it('should update balances after positive rebase', async () => {
-        const { pool, stETH } = testEnv;
-
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '11000'));
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '10000'), lenderAAddress, '0');
-
-        await checkBal(stETH, lenderAAddress, '89000');
-        await checkBal(astETH, lenderAAddress, '11000');
-        await checkBal(stETH, reserveData.aTokenAddress, '11000');
-        await checkSupply(astETH, '11000');
-
-        await rebase(stETH, +0.1);
-
-        expect(await astETH.balanceOf(lenderAAddress)).to.eq(await fxtPt(stETH, '12100'));
-
-        await checkBal(stETH, lenderAAddress, '97900');
-        await checkBal(astETH, lenderAAddress, '12100');
-        await checkBal(stETH, reserveData.aTokenAddress, '12100');
-        await checkSupply(astETH, '12100');
-      });
-
-      it('should update balances after negative rebase', async () => {
-        const { pool, stETH } = testEnv;
-
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '11000'));
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '10000'), lenderAAddress, '0');
-
-        await checkBal(stETH, lenderAAddress, '89000');
-        await checkBal(astETH, lenderAAddress, '11000');
-        await checkBal(stETH, reserveData.aTokenAddress, '11000');
-        await checkSupply(astETH, '11000');
-
-        await rebase(stETH, -0.1);
-
-        expect(await astETH.balanceOf(lenderAAddress)).to.eq(await fxtPt(stETH, '9900'));
-
-        await checkBal(stETH, lenderAAddress, '80100');
-        await checkBal(astETH, lenderAAddress, '9900');
-        await checkBal(stETH, reserveData.aTokenAddress, '9900');
-        await checkSupply(astETH, '9900');
-      });
-    });
-
-    describe('many users', function () {
-      it('should mint correct number of astETH tokens', async () => {
-        const { pool, stETH } = testEnv;
-
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '33000'));
-        await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '5000'));
-        await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '350'));
-
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '30000'), lenderAAddress, '0');
-        await pool
-          .connect(lenderB.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '5000'), lenderBAddress, '0');
-        await pool
-          .connect(lenderC.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '350'), lenderCAddress, '0');
-
-        await checkBal(stETH, lenderAAddress, '70000');
-        await checkBal(stETH, lenderBAddress, '95000');
-        await checkBal(stETH, lenderCAddress, '99650');
-        await checkBal(astETH, lenderAAddress, '30000');
-        await checkBal(astETH, lenderBAddress, '5000');
-        await checkBal(astETH, lenderCAddress, '350');
-        await checkBal(stETH, reserveData.aTokenAddress, '35350');
-        await checkSupply(astETH, '35350');
-
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '3000'), lenderAAddress, '0');
-
-        expect(await astETH.balanceOf(lenderAAddress)).to.eq(await fxtPt(stETH, '33000'));
-
-        await checkBal(stETH, lenderAAddress, '67000');
-        await checkBal(stETH, lenderBAddress, '95000');
-        await checkBal(stETH, lenderCAddress, '99650');
-        await checkBal(astETH, lenderAAddress, '33000');
-        await checkBal(astETH, lenderBAddress, '5000');
-        await checkBal(astETH, lenderCAddress, '350');
-        await checkBal(stETH, reserveData.aTokenAddress, '38350');
-        await checkSupply(astETH, '38350');
-      });
-
-      it('should update balances after positive rebase', async () => {
-        const { pool, stETH } = testEnv;
-
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '33000'));
-        await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '5000'));
-        await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '350'));
-
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '30000'), lenderAAddress, '0');
-        await pool
-          .connect(lenderB.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '5000'), lenderBAddress, '0');
-        await pool
-          .connect(lenderC.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '350'), lenderCAddress, '0');
-
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '3000'), lenderAAddress, '0');
-
-        expect(await astETH.balanceOf(lenderAAddress)).to.eq(await fxtPt(stETH, '33000'));
-
-        await checkBal(stETH, lenderAAddress, '67000');
-        await checkBal(stETH, lenderBAddress, '95000');
-        await checkBal(stETH, lenderCAddress, '99650');
-        await checkBal(astETH, lenderAAddress, '33000');
-        await checkBal(astETH, lenderBAddress, '5000');
-        await checkBal(astETH, lenderCAddress, '350');
-        await checkBal(stETH, reserveData.aTokenAddress, '38350');
-        await checkSupply(astETH, '38350');
-
-        await rebase(stETH, +0.1);
-
-        expect(await astETH.balanceOf(lenderAAddress)).to.eq(await fxtPt(stETH, '36300'));
-
-        await checkBal(stETH, lenderAAddress, '73700');
-        await checkBal(stETH, lenderBAddress, '104500');
-        await checkBal(stETH, lenderCAddress, '109615');
-        await checkBal(astETH, lenderAAddress, '36300');
-        await checkBal(astETH, lenderBAddress, '5500');
-        await checkBal(astETH, lenderCAddress, '385');
-        await checkBal(stETH, reserveData.aTokenAddress, '42185');
-        await checkSupply(astETH, '42185');
-      });
-
-      it('should update balances after negative rebase', async () => {
-        const { pool, stETH } = testEnv;
-
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '33000'));
-        await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '5000'));
-        await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '350'));
-
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '30000'), lenderAAddress, '0');
-        await pool
-          .connect(lenderB.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '5000'), lenderBAddress, '0');
-        await pool
-          .connect(lenderC.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '350'), lenderCAddress, '0');
-
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '3000'), lenderAAddress, '0');
-
-        expect(await astETH.balanceOf(lenderAAddress)).to.eq(await fxtPt(stETH, '33000'));
-
-        await checkBal(stETH, lenderAAddress, '67000');
-        await checkBal(stETH, lenderBAddress, '95000');
-        await checkBal(stETH, lenderCAddress, '99650');
-        await checkBal(astETH, lenderAAddress, '33000');
-        await checkBal(astETH, lenderBAddress, '5000');
-        await checkBal(astETH, lenderCAddress, '350');
-        await checkBal(stETH, reserveData.aTokenAddress, '38350');
-        await checkSupply(astETH, '38350');
-
-        await rebase(stETH, -0.1);
-
-        expect(await astETH.balanceOf(lenderAAddress)).to.eq(await fxtPt(stETH, '29700'));
-
-        await checkBal(stETH, lenderAAddress, '60300');
-        await checkBal(stETH, lenderBAddress, '85500');
-        await checkBal(stETH, lenderCAddress, '89685');
-        await checkBal(astETH, lenderAAddress, '29700');
-        await checkBal(astETH, lenderBAddress, '4500');
-        await checkBal(astETH, lenderCAddress, '315');
-        await checkBal(stETH, reserveData.aTokenAddress, '34515');
-        await checkSupply(astETH, '34515');
-      });
-    });
-
-    describe('v large deposit', function () {
-      it('should mint correct number of astETH tokens', async () => {
-        const { deployer, pool, stETH } = testEnv;
-
-        await stETH.connect(deployer.signer).transfer(lenderAAddress, await fxtPt(stETH, '100000'));
-        await rebase(stETH, 9999);
-
-        await checkSupply(stETH, '10000000000000');
-
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000000000'));
-        await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '500000000'));
-        await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '500000000'));
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '1000000000'), lenderAAddress, '0');
-        await pool
-          .connect(lenderB.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '500000000'), lenderBAddress, '0');
-        await pool
-          .connect(lenderC.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '500000000'), lenderCAddress, '0');
-
-        await checkBal(stETH, lenderAAddress, '1000000000', 10000);
-        await checkBal(stETH, lenderBAddress, '500000000', 10000);
-        await checkBal(stETH, lenderCAddress, '500000000', 10000);
-        await checkBal(astETH, lenderAAddress, '1000000000', 10000);
-        await checkBal(stETH, reserveData.aTokenAddress, '2000000000', 10000);
-        await checkSupply(astETH, '2000000000', 10000);
-
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '10'));
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '10'), lenderAAddress, '0');
-
-        expect(await astETH.balanceOf(lenderAAddress)).to.eq(await fxtPt(stETH, '1000000010'));
-
-        await checkBal(stETH, lenderAAddress, '999999990');
-        await checkBal(stETH, lenderBAddress, '500000000', 10000);
-        await checkBal(stETH, lenderCAddress, '500000000', 10000);
-        await checkBal(astETH, lenderAAddress, '1000000010');
-        await checkBal(stETH, reserveData.aTokenAddress, '2000000010', 10000);
-        await checkSupply(astETH, '2000000010', 10000);
-      });
-    });
-
-    describe('when borrow>0', function () {
-      it('should mint correct number of astETH tokens', async () => {
-        const { deployer, dai, pool, stETH } = testEnv;
-
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '33000'));
-        await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '5000'));
-        await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '400'));
-
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '30000'), lenderAAddress, '0');
-        await pool
-          .connect(lenderB.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '5000'), lenderBAddress, '0');
-        await pool
-          .connect(lenderC.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '350'), lenderCAddress, '0');
-
-        // borrower borrows 2500 StETH
-        await dai.connect(deployer.signer).mint(await fxtPt(dai, '20000000'));
-        await dai.transfer(borrowerAAddress, await fxtPt(dai, '20000000'));
-        await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '20000000'));
-        await pool
-          .connect(borrowerA.signer)
-          .deposit(dai.address, await fxtPt(dai, '20000000'), borrowerAAddress, '0');
-        await pool
-          .connect(borrowerA.signer)
-          .borrow(
-            stETH.address,
-            await fxtPt(stETH, '2500'),
-            RateMode.Variable,
-            '0',
-            borrowerAAddress
-          );
-
-        await checkBal(stETH, lenderAAddress, '70000');
-        await checkBal(stETH, lenderBAddress, '95000');
-        await checkBal(stETH, lenderCAddress, '99650');
-        await checkBal(astETH, lenderAAddress, '30000');
-        await checkBal(astETH, lenderBAddress, '5000');
-        await checkBal(astETH, lenderCAddress, '350');
-        await checkBal(stETH, reserveData.aTokenAddress, '32850');
-        await checkSupply(astETH, '35350');
-
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '3000'), lenderAAddress, '0');
-
-        expect(await astETH.balanceOf(lenderAAddress)).to.be.bignumber.gte(
-          await fxtPt(stETH, '33000')
-        );
-
-        await checkBal(stETH, lenderAAddress, '67000');
-        await checkBal(stETH, lenderBAddress, '95000');
-        await checkBal(stETH, lenderCAddress, '99650');
-        await checkBal(astETH, lenderAAddress, '33000');
-        await checkBal(astETH, lenderBAddress, '5000');
-        await checkBal(astETH, lenderCAddress, '350');
-        await checkBal(stETH, reserveData.aTokenAddress, '35850');
-        await checkSupply(astETH, '38350');
-      });
-
-      it('should update balances on positive rebase', async () => {
-        const { deployer, dai, pool, stETH } = testEnv;
-
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '33000'));
-        await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '5000'));
-        await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '350'));
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '33000'), lenderAAddress, '0');
-        await pool
-          .connect(lenderB.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '5000'), lenderBAddress, '0');
-        await pool
-          .connect(lenderC.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '350'), lenderCAddress, '0');
-
-        await dai.connect(deployer.signer).mint(await fxtPt(dai, '20000000'));
-        await dai.transfer(borrowerAAddress, await fxtPt(dai, '20000000'));
-        await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '20000000'));
-        await pool
-          .connect(borrowerA.signer)
-          .deposit(dai.address, await fxtPt(dai, '20000000'), borrowerAAddress, '0');
-        await pool
-          .connect(borrowerA.signer)
-          .borrow(
-            stETH.address,
-            await fxtPt(stETH, '2500'),
-            RateMode.Variable,
-            '0',
-            borrowerAAddress
-          );
-
-        await checkBal(stETH, lenderAAddress, '67000');
-        await checkBal(stETH, lenderBAddress, '95000');
-        await checkBal(stETH, lenderCAddress, '99650');
-        await checkBal(astETH, lenderAAddress, '33000');
-        await checkBal(astETH, lenderBAddress, '5000');
-        await checkBal(astETH, lenderCAddress, '350');
-        await checkBal(stETH, reserveData.aTokenAddress, '35850');
-        await checkSupply(astETH, '38350');
-
-        await rebase(stETH, +0.1);
-
-        await checkBal(stETH, lenderAAddress, '73700');
-        await checkBal(stETH, lenderBAddress, '104500');
-        await checkBal(stETH, lenderCAddress, '109615');
-        await checkBal(astETH, lenderAAddress, '36084.87');
-        await checkBal(astETH, lenderBAddress, '5467.40');
-        await checkBal(astETH, lenderCAddress, '382.71');
-        await checkBal(stETH, reserveData.aTokenAddress, '39435.00');
-
-        // unborrowed (39435.00) + borrowed (2500)
-        await checkSupply(astETH, '41935.00');
-      });
-
-      it('should update balances on negative rebase', async () => {
-        const { deployer, dai, pool, stETH } = testEnv;
-
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '33000'));
-        await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '5000'));
-        await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '350'));
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '33000'), lenderAAddress, '0');
-        await pool
-          .connect(lenderB.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '5000'), lenderBAddress, '0');
-        await pool
-          .connect(lenderC.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '350'), lenderCAddress, '0');
-
-        await dai.connect(deployer.signer).mint(await fxtPt(dai, '2000000'));
-        await dai.transfer(borrowerAAddress, await fxtPt(dai, '2000000'));
-        await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '2000000'));
-        await pool
-          .connect(borrowerA.signer)
-          .deposit(dai.address, await fxtPt(dai, '2000000'), borrowerAAddress, '0');
-        await pool
-          .connect(borrowerA.signer)
-          .borrow(
-            stETH.address,
-            await fxtPt(stETH, '2500'),
-            RateMode.Variable,
-            '0',
-            borrowerAAddress
-          );
-
-        await checkBal(stETH, lenderAAddress, '67000');
-        await checkBal(stETH, lenderBAddress, '95000');
-        await checkBal(stETH, lenderCAddress, '99650');
-        await checkBal(astETH, lenderAAddress, '33000');
-        await checkBal(astETH, lenderBAddress, '5000');
-        await checkBal(astETH, lenderCAddress, '350');
-        await checkBal(stETH, reserveData.aTokenAddress, '35850');
-        await checkSupply(astETH, '38350');
-
-        await rebase(stETH, -0.1);
-
-        await checkBal(stETH, lenderAAddress, '60300');
-        await checkBal(stETH, lenderBAddress, '85500');
-        await checkBal(stETH, lenderCAddress, '89685');
-        await checkBal(astETH, lenderAAddress, '29915.12');
-        await checkBal(astETH, lenderBAddress, '4532.59');
-        await checkBal(astETH, lenderCAddress, '317.28');
-        await checkBal(stETH, reserveData.aTokenAddress, '32265');
-
-        // unborrowed (32265.00) + borrowed (2500)
-        await checkSupply(astETH, '34765.00');
-      });
-    });
-  });
-
-  describe('user withdraw', function () {
-    describe('single deposit partial withdraw', function () {
-      it('should burn correct number of astETH tokens', async () => {
-        const { pool, stETH } = testEnv;
-
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000'));
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
-
-        await checkBal(stETH, lenderAAddress, '99000');
-        await checkBal(astETH, lenderAAddress, '1000');
-        await checkBal(stETH, reserveData.aTokenAddress, '1000');
-        await checkSupply(astETH, '1000');
-
-        await pool
-          .connect(lenderA.signer)
-          .withdraw(stETH.address, await fxtPt(stETH, '100'), lenderAAddress);
-
-        await checkBal(stETH, lenderAAddress, '99100');
-        await checkBal(astETH, lenderAAddress, '900');
-        await checkBal(stETH, reserveData.aTokenAddress, '900');
-        await checkSupply(astETH, '900');
-      });
-    });
-
-    describe('single deposit full withdraw', function () {
-      it('should burn correct number of astETH tokens', async () => {
-        const { pool, stETH } = testEnv;
-
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000'));
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
-
-        await checkBal(stETH, lenderAAddress, '99000');
-        await checkBal(astETH, lenderAAddress, '1000');
-        await checkBal(stETH, reserveData.aTokenAddress, '1000');
-        await checkSupply(astETH, '1000');
-
-        await pool.connect(lenderA.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
-
-        await checkBal(stETH, lenderAAddress, '100000');
-        await checkBal(astETH, lenderAAddress, '0');
-        await checkBal(stETH, reserveData.aTokenAddress, '0');
-        await checkSupply(astETH, '0');
-      });
-
-      it('should burn correct number of astETH positive rebase', async () => {
-        const { pool, stETH } = testEnv;
-
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000'));
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
-
-        await checkBal(stETH, lenderAAddress, '99000');
-        await checkBal(astETH, lenderAAddress, '1000');
-        await checkBal(stETH, reserveData.aTokenAddress, '1000');
-        await checkSupply(astETH, '1000');
-
-        await rebase(stETH, 0.1); // + 10%
-        await pool.connect(lenderA.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
-
-        await checkBal(stETH, lenderAAddress, '110000');
-        await checkBal(astETH, lenderAAddress, '0');
-        await checkBal(stETH, reserveData.aTokenAddress, '0');
-        await checkSupply(astETH, '0');
-      });
-
-      it('should burn correct number of astETH negative rebase', async () => {
-        const { pool, stETH } = testEnv;
-
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000'));
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
-
-        await checkBal(stETH, lenderAAddress, '99000');
-        await checkBal(astETH, lenderAAddress, '1000');
-        await checkBal(stETH, reserveData.aTokenAddress, '1000');
-        await checkSupply(astETH, '1000');
-
-        await rebase(stETH, -0.1); // - 10%
-        await pool.connect(lenderA.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
-
-        await checkBal(stETH, lenderAAddress, '90000');
-        await checkBal(astETH, lenderAAddress, '0');
-        await checkBal(stETH, reserveData.aTokenAddress, '0');
-        await checkSupply(astETH, '0');
-      });
-    });
-
-    describe('lone user multiple withdraws', function () {
-      it('should burn correct number of astETH tokens', async () => {
-        const { pool, stETH } = testEnv;
-
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '10000'));
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '10000'), lenderAAddress, '0');
-
-        await checkBal(stETH, lenderAAddress, '90000');
-        await checkBal(astETH, lenderAAddress, '10000');
-        await checkBal(stETH, reserveData.aTokenAddress, '10000');
-        await checkSupply(astETH, '10000');
-
-        await pool
-          .connect(lenderA.signer)
-          .withdraw(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress);
-
-        await checkBal(stETH, lenderAAddress, '91000');
-        await checkBal(astETH, lenderAAddress, '9000');
-        await checkBal(stETH, reserveData.aTokenAddress, '9000');
-        await checkSupply(astETH, '9000');
-
-        await advanceTimeAndBlock(3600 * 24 * 365); // 1 year
-        await pool.connect(lenderA.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
-
-        await checkBal(stETH, lenderAAddress, '100000');
-        await checkBal(astETH, lenderAAddress, '0');
-        await checkBal(stETH, reserveData.aTokenAddress, '0');
-        await checkSupply(astETH, '0');
-      });
-    });
-
-    describe('multiple withdraws', function () {
-      it('should burn correct number of astETH tokens', async () => {
-        const { pool, stETH } = testEnv;
-
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '33000'));
-        await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '5000'));
-        await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '350'));
-
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '30000'), lenderAAddress, '0');
-        await pool
-          .connect(lenderB.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '5000'), lenderBAddress, '0');
-        await pool
-          .connect(lenderC.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '350'), lenderCAddress, '0');
-
-        await checkBal(stETH, lenderAAddress, '70000');
-        await checkBal(stETH, lenderBAddress, '95000');
-        await checkBal(stETH, lenderCAddress, '99650');
-        await checkBal(astETH, lenderAAddress, '30000');
-        await checkBal(astETH, lenderBAddress, '5000');
-        await checkBal(astETH, lenderCAddress, '350');
-        await checkBal(stETH, reserveData.aTokenAddress, '35350');
-        await checkSupply(astETH, '35350');
-
-        await pool.connect(lenderC.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderCAddress);
-        await pool.connect(lenderB.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderBAddress);
-        await pool.connect(lenderA.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
-
-        await checkBal(stETH, lenderAAddress, '100000');
-        await checkBal(stETH, lenderBAddress, '100000');
-        await checkBal(stETH, lenderCAddress, '100000');
-        await checkBal(astETH, lenderAAddress, '0');
-        await checkBal(astETH, lenderBAddress, '0');
-        await checkBal(astETH, lenderCAddress, '0');
-        await checkBal(stETH, reserveData.aTokenAddress, '0');
-        await checkSupply(astETH, '0');
-      });
-    });
-
-    describe('v large withdraw', function () {
-      it('should burn correct number of astETH tokens', async () => {
-        const { deployer, pool, stETH } = testEnv;
-
-        await stETH.connect(deployer.signer).transfer(lenderAAddress, await fxtPt(stETH, '100000'));
-        await rebase(stETH, 9999);
-
-        await checkSupply(stETH, '10000000000000');
-
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000000000'));
-        await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '500000000'));
-        await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '500000000'));
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '1000000000'), lenderAAddress, '0');
-        await pool
-          .connect(lenderB.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '500000000'), lenderBAddress, '0');
-        await pool
-          .connect(lenderC.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '500000000'), lenderCAddress, '0');
-
-        await checkBal(stETH, lenderAAddress, '1000000000', 10000);
-        await checkBal(stETH, lenderBAddress, '500000000', 10000);
-        await checkBal(stETH, lenderCAddress, '500000000', 10000);
-        await checkBal(astETH, lenderAAddress, '1000000000', 10000);
-        await checkBal(stETH, reserveData.aTokenAddress, '2000000000', 10000);
-        await checkSupply(astETH, '2000000000', 10000);
-
-        await pool.connect(lenderA.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
-
-        await checkBal(stETH, lenderAAddress, '2000000000', 10000);
-        await checkBal(stETH, lenderBAddress, '500000000', 10000);
-        await checkBal(stETH, lenderCAddress, '500000000', 10000);
-        await checkBal(astETH, lenderAAddress, '0');
-        await checkBal(stETH, reserveData.aTokenAddress, '1000000000', 10000);
-        await checkSupply(astETH, '1000000000', 10000);
-      });
-    });
-
-    describe('when borrow>0', function () {
-      it('should burn correct number of astETH tokens', async () => {
-        const { deployer, dai, pool, stETH } = testEnv;
-
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '33000'));
-        await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '5000'));
-        await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '350'));
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '33000'), lenderAAddress, '0');
-        await pool
-          .connect(lenderB.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '5000'), lenderBAddress, '0');
-        await pool
-          .connect(lenderC.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '350'), lenderCAddress, '0');
-
-        // borrower borrows 2500 StETH
-        await dai.connect(deployer.signer).mint(await fxtPt(dai, '2000000'));
-        await dai.transfer(borrowerAAddress, await fxtPt(dai, '2000000'));
-        await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '2000000'));
-        await pool
-          .connect(borrowerA.signer)
-          .deposit(dai.address, await fxtPt(dai, '2000000'), borrowerAAddress, '0');
-        await pool
-          .connect(borrowerA.signer)
-          .borrow(
-            stETH.address,
-            await fxtPt(stETH, '2500'),
-            RateMode.Variable,
-            '0',
-            borrowerAAddress
-          );
-
-        await checkBal(stETH, lenderAAddress, '67000');
-        await checkBal(stETH, lenderBAddress, '95000');
-        await checkBal(stETH, lenderCAddress, '99650');
-        await checkBal(astETH, lenderAAddress, '33000');
-        await checkBal(astETH, lenderBAddress, '5000');
-        await checkBal(astETH, lenderCAddress, '350');
-        await checkBal(stETH, reserveData.aTokenAddress, '35850');
-        await checkSupply(astETH, '38350');
-
-        await pool.connect(lenderC.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderCAddress);
-
-        await checkBal(stETH, lenderAAddress, '67000');
-        await checkBal(stETH, lenderBAddress, '95000');
-        await checkBal(stETH, lenderCAddress, '100000');
-        await checkBal(astETH, lenderAAddress, '33000');
-        await checkBal(astETH, lenderBAddress, '5000');
-        await checkBal(astETH, lenderCAddress, '0');
-        await checkBal(stETH, reserveData.aTokenAddress, '35500');
-        await checkSupply(astETH, '38000');
-      });
-
-      it('should update balances on positive rebase', async () => {
-        const { deployer, dai, pool, stETH } = testEnv;
-
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '33000'));
-        await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '5000'));
-        await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '350'));
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '33000'), lenderAAddress, '0');
-        await pool
-          .connect(lenderB.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '5000'), lenderBAddress, '0');
-        await pool
-          .connect(lenderC.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '350'), lenderCAddress, '0');
-
-        // borrower borrows 2500 StETH
-        await dai.connect(deployer.signer).mint(await fxtPt(dai, '2000000'));
-        await dai.transfer(borrowerAAddress, await fxtPt(dai, '2000000'));
-        await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '2000000'));
-        await pool
-          .connect(borrowerA.signer)
-          .deposit(dai.address, await fxtPt(dai, '2000000'), borrowerAAddress, '0');
-        await pool
-          .connect(borrowerA.signer)
-          .borrow(
-            stETH.address,
-            await fxtPt(stETH, '2500'),
-            RateMode.Variable,
-            '0',
-            borrowerAAddress
-          );
-
-        await checkBal(stETH, lenderAAddress, '67000');
-        await checkBal(stETH, lenderBAddress, '95000');
-        await checkBal(stETH, lenderCAddress, '99650');
-        await checkBal(astETH, lenderAAddress, '33000');
-        await checkBal(astETH, lenderBAddress, '5000');
-        await checkBal(astETH, lenderCAddress, '350');
-        await checkBal(stETH, reserveData.aTokenAddress, '35850');
-        await checkSupply(astETH, '38350');
-
-        await rebase(stETH, +0.1);
-        await pool.connect(lenderC.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderCAddress);
-
-        await checkBal(stETH, lenderAAddress, '73700');
-        await checkBal(stETH, lenderBAddress, '104500');
-        await checkBal(stETH, lenderCAddress, '109997.71');
-        await checkBal(astETH, lenderAAddress, '36084.87');
-        await checkBal(astETH, lenderBAddress, '5467.40');
-        await checkBal(astETH, lenderCAddress, '0');
-        await checkBal(stETH, reserveData.aTokenAddress, '39052.28');
-        await checkSupply(astETH, '41552.28');
-      });
-
-      it('should update balances on negative rebase', async () => {
-        const { deployer, dai, pool, stETH } = testEnv;
-
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '33000'));
-        await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '5000'));
-        await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '350'));
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '33000'), lenderAAddress, '0');
-        await pool
-          .connect(lenderB.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '5000'), lenderBAddress, '0');
-        await pool
-          .connect(lenderC.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '350'), lenderCAddress, '0');
-
-        // borrower borrows 2500 StETH
-        await dai.connect(deployer.signer).mint(await fxtPt(dai, '2000000'));
-        await dai.transfer(borrowerAAddress, await fxtPt(dai, '2000000'));
-        await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '2000000'));
-        await pool
-          .connect(borrowerA.signer)
-          .deposit(dai.address, await fxtPt(dai, '2000000'), borrowerAAddress, '0');
-        await pool
-          .connect(borrowerA.signer)
-          .borrow(
-            stETH.address,
-            await fxtPt(stETH, '2500'),
-            RateMode.Variable,
-            '0',
-            borrowerAAddress
-          );
-
-        await checkBal(stETH, lenderAAddress, '67000');
-        await checkBal(stETH, lenderBAddress, '95000');
-        await checkBal(stETH, lenderCAddress, '99650');
-        await checkBal(astETH, lenderAAddress, '33000');
-        await checkBal(astETH, lenderBAddress, '5000');
-        await checkBal(astETH, lenderCAddress, '350');
-        await checkBal(stETH, reserveData.aTokenAddress, '35850');
-        await checkSupply(astETH, '38350');
-
-        await rebase(stETH, -0.1);
-        await pool.connect(lenderC.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderCAddress);
-
-        await checkBal(stETH, lenderAAddress, '60300');
-        await checkBal(stETH, lenderBAddress, '85500');
-        await checkBal(stETH, lenderCAddress, '90002.28');
-        await checkBal(astETH, lenderAAddress, '29915.12');
-        await checkBal(astETH, lenderBAddress, '4532.59');
-        await checkBal(astETH, lenderCAddress, '0');
-        await checkBal(stETH, reserveData.aTokenAddress, '31947.72');
-        await checkSupply(astETH, '34447.72');
-      });
-    });
-  });
-
-  describe('user borrow repay with interest', function () {
-    it('should update accounting', async () => {
-      const { pool, dai, stETH } = testEnv;
-
-      // lender deposits StETH
-      await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '10000'));
-      await pool
-        .connect(lenderA.signer)
-        .deposit(stETH.address, await fxtPt(stETH, '10000'), lenderAAddress, '0');
-
-      // borrower deposits DAI
-      await dai.mint(await fxtPt(dai, '2000000'));
-      await dai.transfer(borrowerAAddress, await fxtPt(dai, '2000000'));
-      await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '2000000'));
-      await pool
-        .connect(borrowerA.signer)
-        .deposit(dai.address, await fxtPt(dai, '2000000'), borrowerAAddress, '0');
-
-      await checkBal(stETH, lenderAAddress, '90000');
-      await checkBal(astETH, lenderAAddress, '10000');
-      await checkSupply(astETH, '10000');
-      await checkBal(stETH, reserveData.aTokenAddress, '10000');
-      await checkBal(stETH, borrowerAAddress, '0');
-      await checkBal(debtToken, borrowerAAddress, '0');
-
-      // borrower borrows StETH
-      await pool
-        .connect(borrowerA.signer)
-        .borrow(
-          stETH.address,
-          await fxtPt(stETH, '2500'),
-          RateMode.Variable,
-          '0',
-          borrowerAAddress
-        );
-
-      await printBalances('Borrow happens');
-
-      await checkBal(stETH, lenderAAddress, '90000');
-      await checkBal(astETH, lenderAAddress, '10000');
-      await checkSupply(astETH, '10000');
-      await checkBal(stETH, reserveData.aTokenAddress, '7500');
-      await checkBal(stETH, borrowerAAddress, '2500');
-      await checkBal(debtToken, borrowerAAddress, '2500');
-
-      await advanceTimeAndBlock(10 * 3600 * 24 * 365); // 10 years
-
-      await printBalances('10 years later');
-
-      await checkBal(stETH, lenderAAddress, '90000');
-      await checkScaledBal(astETH, lenderAAddress, '10000'); // P = 7500 + 2500
-      await checkBalGt(astETH, lenderAAddress, '10000'); // T = P + delta (I) > 10000
-      await checkSupplyGt(astETH, '10000');
-      await checkBal(stETH, reserveData.aTokenAddress, '7500'); // unborrowed pool balance
-      await checkBal(stETH, borrowerAAddress, '2500'); // borrower StETH balance
-      await checkBalGt(debtToken, borrowerAAddress, '2500'); // 2500 (principal) + delta (I)
-      await checkBal(astETH, treasuryAddress, '0');
-
-      // borrower gets some StETH to close out debt
-      await stETH.connect(lenderC.signer).transfer(borrowerAAddress, await fxtPt(stETH, '1500'));
-      await checkBal(stETH, borrowerAAddress, '4000', 1);
-
-      // borrower repays 2500 + delta (borrowed interest) StETH
-      await stETH.connect(borrowerA.signer).approve(pool.address, MAX_UINT_AMOUNT);
-      await pool
-        .connect(borrowerA.signer)
-        .repay(stETH.address, MAX_UINT_AMOUNT, RateMode.Variable, borrowerAAddress);
-
-      await checkBal(stETH, lenderAAddress, '90000');
-      await checkBalGt(astETH, lenderAAddress, '10000');
-      await checkSupplyGt(astETH, '10000');
-      await checkBalGt(stETH, reserveData.aTokenAddress, '10000');
-      await checkBalGt(stETH, borrowerAAddress, '0');
-      await checkBal(debtToken, borrowerAAddress, '0');
-      await checkBalGt(astETH, treasuryAddress, '0');
-
-      const stETHBefore = await fxtPt(stETH, '90000');
-      const lenderANewBalance = (await astETH.balanceOf(lenderAAddress)).add(stETHBefore);
-
-      await pool.connect(lenderA.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
-
-      const lenderBalanceActual = await stETH.balanceOf(lenderAAddress);
-
-      await check(lenderANewBalance, lenderBalanceActual, stETH, 0.01);
-      await checkBal(astETH, lenderAAddress, '0');
-
-      await checkSupplyGt(astETH, '0');
-      const treasuryAmount = await astETH.balanceOf(treasuryAddress);
-      const astETHTotalSupply = await astETH.totalSupply();
-      await check(astETHTotalSupply, treasuryAmount, astETH, 0.01);
-
-      await checkBalGt(stETH, reserveData.aTokenAddress, '0');
-      await checkBalGt(astETH, treasuryAddress, '0');
-    });
-  });
-
-  describe('user borrow repay with positive rebase', function () {
-    it('should update accounting', async () => {
-      const { pool, dai, stETH } = testEnv;
-
-      // lender deposits StETH
-      await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '10000'));
-      await pool
-        .connect(lenderA.signer)
-        .deposit(stETH.address, await fxtPt(stETH, '10000'), lenderAAddress, '0');
-
-      // borrower deposits DAI
-      await dai.mint(await fxtPt(dai, '2000000'));
-      await dai.transfer(borrowerAAddress, await fxtPt(dai, '2000000'));
-      await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '2000000'));
-      await pool
-        .connect(borrowerA.signer)
-        .deposit(dai.address, await fxtPt(dai, '2000000'), borrowerAAddress, '0');
-
-      // borrower borrows StETH
-      await pool
-        .connect(borrowerA.signer)
-        .borrow(
-          stETH.address,
-          await fxtPt(stETH, '2500'),
-          RateMode.Variable,
-          '0',
-          borrowerAAddress
-        );
-
-      await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 10 years
-
-      await rebase(stETH, +0.25); // 25% rebase
-
-      await checkBal(stETH, lenderAAddress, '112500');
-      await checkScaledBal(astETH, lenderAAddress, '11875.00'); // P = (7500*1.25) + 2500
-      await checkBalGt(astETH, lenderAAddress, '11875.00'); // T = P + delta (I)
-      await checkSupplyGt(astETH, '11875.00');
-      await checkBal(stETH, reserveData.aTokenAddress, '9375'); // unborrowed principal balance (7500*1.25)
-      await checkBal(stETH, borrowerAAddress, '3125.00'); // Borrowed StETH balance
-      await checkBalGt(debtToken, borrowerAAddress, '2500'); // 2500 (principal) + delta (I)
-      await checkBal(astETH, treasuryAddress, '0'); // Treasury
-
-      // borrower repays 2500 + (borrowed interest) StETH
-      await stETH.connect(borrowerA.signer).approve(pool.address, MAX_UINT_AMOUNT);
-      await pool
-        .connect(borrowerA.signer)
-        .repay(stETH.address, MAX_UINT_AMOUNT, RateMode.Variable, borrowerAAddress);
-
-      await checkBal(stETH, lenderAAddress, '112500');
-      await checkScaledBal(astETH, lenderAAddress, '11875.00');
-      await checkBalGt(astETH, lenderAAddress, '11875.00');
-      await checkSupplyGt(astETH, '11875.00');
-      await checkBalGt(stETH, reserveData.aTokenAddress, '11875');
-      await checkBalGt(stETH, borrowerAAddress, '0');
-      await checkBal(debtToken, borrowerAAddress, '0');
-      await checkBalGt(astETH, treasuryAddress, '0');
-
-      const stETHBefore = await stETH.balanceOf(lenderAAddress);
-      const expectedStETHAfter = (await astETH.balanceOf(lenderAAddress)).add(stETHBefore);
-
-      await pool.connect(lenderA.signer).withdraw(
-        stETH.address,
-        // await fxtPt(stETH, '12090'),
-        MAX_UINT_AMOUNT,
-        lenderAAddress
-      );
-
-      const stETHAfter = await stETH.balanceOf(lenderAAddress);
-
-      await check(stETHAfter, expectedStETHAfter, stETH, 0.01);
-      await checkScaledBal(astETH, lenderAAddress, '0');
-      await checkBal(astETH, lenderAAddress, '0');
-
-      const treasuryAmount = await astETH.balanceOf(treasuryAddress);
-      const astETHTotalSupply = await astETH.totalSupply();
-      await check(astETHTotalSupply, treasuryAmount, astETH, 0.01);
-
-      await checkBalGt(stETH, reserveData.aTokenAddress, '0');
-      await checkBalGt(stETH, borrowerAAddress, '0');
-      await checkBal(debtToken, borrowerAAddress, '0');
-      await checkBalGt(astETH, treasuryAddress, '0');
-    });
-  });
-
-  describe('user borrow repay with negative rebase', function () {
-    it('should update accounting', async () => {
-      const { pool, dai, stETH } = testEnv;
-
-      // lender deposits StETH
-      await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '10000'));
-      await pool
-        .connect(lenderA.signer)
-        .deposit(stETH.address, await fxtPt(stETH, '10000'), lenderAAddress, '0');
-
-      // borrower deposits DAI
-      await dai.mint(await fxtPt(dai, '20000000'));
-      await dai.transfer(borrowerAAddress, await fxtPt(dai, '20000000'));
-      await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '20000000'));
-      await pool
-        .connect(borrowerA.signer)
-        .deposit(dai.address, await fxtPt(dai, '20000000'), borrowerAAddress, '0');
-
-      // borrower borrows StETH
-      await pool
-        .connect(borrowerA.signer)
-        .borrow(
-          stETH.address,
-          await fxtPt(stETH, '2500'),
-          RateMode.Variable,
-          '0',
-          borrowerAAddress
-        );
-
-      await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 10 years
-      await rebase(stETH, -0.25); // -25% rebase
-
-      await checkBal(stETH, lenderAAddress, '67500.00');
-      await checkScaledBal(astETH, lenderAAddress, '8125'); // P = (7500*0.75) + 2500
-      await checkBalGt(astETH, lenderAAddress, '8125'); // T = P + delta (I)
-      await checkSupplyGt(astETH, '8125');
-      await checkBal(stETH, reserveData.aTokenAddress, '5625.00'); // unborrowed principal balance (7500*0.75)
-      await checkBal(stETH, borrowerAAddress, '1875.00'); // Borrowed StETH balance
-      await checkBalGt(debtToken, borrowerAAddress, '2500'); // 2500 (principal) + delta (I)
-      await checkBal(astETH, treasuryAddress, '0'); // Treasury
-
-      // friend sends borrower some stETH to pay back interest
-      await stETH.connect(lenderC.signer).transfer(borrowerAAddress, await fxtPt(stETH, '1000'));
-
-      // borrower repays 2500 + (borrowed interest) StETH
-      await stETH.connect(borrowerA.signer).approve(pool.address, MAX_UINT_AMOUNT);
-      await pool
-        .connect(borrowerA.signer)
-        .repay(stETH.address, MAX_UINT_AMOUNT, RateMode.Variable, borrowerAAddress);
-
-      await checkBal(stETH, lenderAAddress, '67500.00');
-      await checkScaledBal(astETH, lenderAAddress, '8125');
-      await checkBalGt(astETH, lenderAAddress, '8125');
-      await checkSupplyGt(astETH, '8125');
-      await checkBalGt(stETH, reserveData.aTokenAddress, '8125');
-      await checkBalGt(stETH, borrowerAAddress, '0');
-      await checkBal(debtToken, borrowerAAddress, '0');
-      await checkBalGt(astETH, treasuryAddress, '0');
-
-      const stETHBefore = await stETH.balanceOf(lenderAAddress);
-      const expectedStETHAfter = (await astETH.balanceOf(lenderAAddress)).add(stETHBefore);
-
-      await pool.connect(lenderA.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
-
-      const stETHAfter = await stETH.balanceOf(lenderAAddress);
-
-      await check(stETHAfter, expectedStETHAfter, stETH, 0.01);
-      await checkScaledBal(astETH, lenderAAddress, '0');
-      await checkBal(astETH, lenderAAddress, '0');
-
-      await checkSupplyGt(astETH, '0');
-      const treasuryAmount = await astETH.balanceOf(treasuryAddress);
-      const astETHTotalSupply = await astETH.totalSupply();
-      await check(astETHTotalSupply, treasuryAmount, astETH, 0.01);
-
-      await checkBalGt(stETH, reserveData.aTokenAddress, '0');
-      await checkBalGt(stETH, borrowerAAddress, '0');
-      await checkBal(debtToken, borrowerAAddress, '0');
-      await checkBalGt(astETH, treasuryAddress, '0');
-    });
-  });
-
-  // describe('borrow and repay of DAI', function () {
-  //   it('AAVE math must be correct', async () => {
-  //     const { pool, dai, stETH, aDai } = testEnv;
-
-  //     // lenders deposits DAI and borrow StETH
-  //     await dai.mint(await fxtPt(dai, '1000000000'));
-  //     await dai.transfer(lenderAAddress, await fxtPt(dai, '30000'));
-  //     await dai.transfer(lenderBAddress, await fxtPt(dai, '50000'));
-  //     await dai.transfer(borrowerAAddress, await fxtPt(dai, '10000'));
-  //     await dai.transfer(borrowerBAddress, await fxtPt(dai, '10000'));
-  //     await dai.connect(lenderA.signer).approve(pool.address, await fxtPt(dai, '30000000'));
-  //     await dai.connect(lenderB.signer).approve(pool.address, await fxtPt(dai, '50000000'));
-
-  //     const reserveData = await pool.getReserveData(dai.address);
-  //     const daiVDebtTokenAddress = reserveData.variableDebtTokenAddress;
-  //     const variableDebtToken = await getVariableDebtToken(daiVDebtTokenAddress);
-
-  //     const printBalances = async (title: string = '') => {
-  //       console.log(title);
-  //       await dai
-  //         .balanceOf(aDai.address)
-  //         .then((v) => console.log('dai.balanceOf(aDai):', v.toString()));
-  //       await aDai
-  //         .balanceOf(lenderAAddress)
-  //         .then((v) => console.log('dai.balanceOf(lenderA)', v.toString()));
-  //       await aDai
-  //         .balanceOf(lenderBAddress)
-  //         .then((v) => console.log('dai.balanceOf(lenderB)', v.toString()));
-  //       await variableDebtToken
-  //         .balanceOf(borrowerAAddress)
-  //         .then((v) => console.log('VDebtToken.balanceOf(borrowerA)', v.toString()));
-  //       await variableDebtToken
-  //         .balanceOf(borrowerBAddress)
-  //         .then((v) => console.log('VDebtToken.balanceOf(borrowerA)', v.toString()));
-  //       console.log();
-  //     };
-
-  //     await pool
-  //       .connect(lenderA.signer)
-  //       .deposit(dai.address, await fxtPt(dai, '30000'), lenderAAddress, '0');
-
-  //     await printBalances();
-
-  //     await pool
-  //       .connect(lenderB.signer)
-  //       .deposit(dai.address, await fxtPt(dai, '50000'), lenderBAddress, '0');
-  //     await printBalances();
-
-  //     // borrowers depost steth to use as collateral
-  //     await stETH.connect(borrowerA.signer).approve(pool.address, await fxtPt(stETH, '10000'));
-  //     await pool
-  //       .connect(borrowerA.signer)
-  //       .deposit(stETH.address, await fxtPt(stETH, '10000'), borrowerAAddress, '0');
-  //     await pool
-  //       .connect(borrowerB.signer)
-  //       .deposit(stETH.address, await fxtPt(stETH, '15000'), borrowerBAddress, '0');
-
-  //     await pool
-  //       .connect(borrowerA.signer)
-  //       .borrow(dai.address, await fxtPt(stETH, '10000'), RateMode.Variable, '0', borrowerAAddress);
-
-  //     await printBalances();
-
-  //     await pool
-  //       .connect(borrowerB.signer)
-  //       .borrow(dai.address, await fxtPt(stETH, '15000'), RateMode.Variable, '0', borrowerBAddress);
-
-  //     await printBalances();
-
-  //     await advanceTimeAndBlock(1 * 3600 * 24 * 365);
-  //     await printBalances('One year later');
-
-  //     await dai.connect(borrowerA.signer).approve(pool.address, MAX_UINT_AMOUNT);
-  //     await pool
-  //       .connect(borrowerA.signer)
-  //       .repay(dai.address, MAX_UINT_AMOUNT, RateMode.Variable, borrowerAAddress);
-
-  //     await printBalances();
-
-  //     await dai.connect(borrowerB.signer).approve(pool.address, MAX_UINT_AMOUNT);
-  //     await pool
-  //       .connect(borrowerB.signer)
-  //       .repay(dai.address, MAX_UINT_AMOUNT, RateMode.Variable, borrowerBAddress);
-
-  //     await printBalances();
-
-  //     await pool.connect(lenderA.signer).withdraw(dai.address, MAX_UINT_AMOUNT, lenderAAddress);
-  //     await printBalances();
-
-  //     await pool.connect(lenderB.signer).withdraw(dai.address, MAX_UINT_AMOUNT, lenderBAddress);
-  //     await printBalances();
+  // describe('steth rebasing', () => {
+  //   describe('positive rebase', function () {
+  //     it('should update total supply correctly', async () => {
+  //       const { stETH } = testEnv;
+
+  //       const currentSupply = new BigNumber((await stETH.totalSupply()).toString());
+  //       const supplyDelta = currentSupply.multipliedBy(+0.1);
+  //       await rebase(stETH, +0.1);
+  //       const afterBalance = currentSupply.plus(supplyDelta);
+  //       const newTotalSupply = await stETH.totalSupply();
+
+  //       expect(newTotalSupply.toString()).to.be.equal(afterBalance.toString(10));
+  //     });
+  //   });
+  //   describe('negative rebase', function () {
+  //     it('should update total supply correctly', async () => {
+  //       const { stETH } = testEnv;
+
+  //       const currentSupply = new BigNumber((await stETH.totalSupply()).toString());
+  //       const supplyDelta = currentSupply.multipliedBy(-0.1);
+  //       await rebase(stETH, -0.1);
+  //       const afterBalance = currentSupply.plus(supplyDelta);
+  //       const newTotalSupply = await stETH.totalSupply();
+
+  //       expect(newTotalSupply.toString()).to.be.equal(afterBalance.toString(10));
+  //     });
   //   });
   // });
 
-  describe('multi user borrow repay', function () {
-    it('should update accounting', async () => {
-      const { pool, dai, stETH } = testEnv;
+  // describe('user Transfer', () => {
+  //   describe('when lenderA deposits 1000 StETH, transfers all to himself', function () {
+  //     it('should update balances correctly', async () => {
+  //       const { pool, stETH } = testEnv;
 
-      // lender deposits StETH
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000'));
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
+
+  //       const beforeBalance = await astETH.scaledBalanceOf(lenderAAddress);
+  //       await astETH
+  //         .connect(lenderA.signer)
+  //         .transfer(lenderAAddress, await astETH.balanceOf(lenderAAddress));
+  //       const afterBalance = await astETH.scaledBalanceOf(lenderAAddress);
+
+  //       expect(beforeBalance.toString()).to.be.equal(afterBalance.toString());
+  //     });
+  //   });
+
+  //   describe('the single deposit after rebase', function () {
+  //     it('should update balances correctly', async () => {
+  //       const { pool, stETH } = testEnv;
+
+  //       await rebase(stETH, 1.0);
+
+  //       // the single deposit for lender A
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '13'));
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '13'), lenderA.address, '0');
+
+  //       await checkBal(astETH, lenderA.address, '13');
+  //     });
+  //   });
+
+  //   describe('the first deposit after rebase for lender', function () {
+  //     it('should update balances correctly', async () => {
+  //       const { pool, stETH } = testEnv;
+
+  //       await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '97'));
+  //       await pool
+  //         .connect(lenderB.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '97'), lenderB.address, '0');
+
+  //       await rebase(stETH, 1.0);
+
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '13'));
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '13'), lenderA.address, '0');
+
+  //       let balances = await astETH.getScaledUserBalanceAndSupply(lenderAAddress);
+
+  //       let expectedAmount = await fxtPt(astETH, '13');
+  //       expect(balances[0].toString()).to.be.equal(expectedAmount.toString());
+
+  //       expectedAmount = await fxtPt(astETH, '207');
+  //       expect(balances[1].toString()).to.be.equal(expectedAmount.toString());
+
+  //       await checkBal(astETH, lenderA.address, '13');
+  //     });
+  //   });
+
+  //   describe('several sequintial deposits', function () {
+  //     it('should mint aTokens correctly', async () => {
+  //       const { pool, stETH } = testEnv;
+
+  //       // the first deposit for A
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '7'));
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '7'), lenderA.address, '0');
+
+  //       // the single deposit for B
+  //       await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '11'));
+  //       await pool
+  //         .connect(lenderB.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '11'), lenderB.address, '0');
+
+  //       let balances = await astETH.getScaledUserBalanceAndSupply(lenderAAddress);
+
+  //       let expectedAmount = await fxtPt(astETH, '7');
+  //       expect(balances[0].toString()).to.be.equal(expectedAmount.toString());
+
+  //       expectedAmount = await fxtPt(astETH, '18');
+  //       expect(balances[1].toString()).to.be.equal(expectedAmount.toString());
+
+  //       await advanceTimeAndBlock(3600 * 24 * 14); // 2 weeks
+
+  //       // the second deposit for A
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '3'));
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '3'), lenderA.address, '0');
+
+  //       await checkBal(astETH, lenderA.address, '10');
+
+  //       balances = await astETH.getScaledUserBalanceAndSupply(lenderAAddress);
+
+  //       expectedAmount = await fxtPt(astETH, '10');
+  //       expect(balances[0].toString()).to.be.equal(expectedAmount.toString());
+
+  //       expectedAmount = await fxtPt(astETH, '21');
+  //       expect(balances[1].toString()).to.be.equal(expectedAmount.toString());
+  //     });
+  //   });
+
+  //   describe('deposit->borrow->rebase->repay->deposit->rebase', function () {
+  //     it('should mint aToken correctly', async () => {
+  //       const { pool, stETH, dai } = testEnv;
+
+  //       // deposit
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1'));
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '1'), lenderA.address, '0');
+  //       // borrow
+  //       await dai.mint(await fxtPt(dai, '400'));
+  //       await dai.transfer(borrowerA.address, await fxtPt(dai, '400'));
+  //       await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '400'));
+  //       await pool
+  //         .connect(borrowerA.signer)
+  //         .deposit(dai.address, await fxtPt(dai, '400'), borrowerA.address, '0');
+  //       await pool
+  //         .connect(borrowerA.signer)
+  //         .borrow(
+  //           stETH.address,
+  //           await fxtPt(stETH, '0.5'),
+  //           RateMode.Variable,
+  //           '0',
+  //           borrowerA.address
+  //         );
+
+  //       await checkBal(stETH, lenderA.address, '99999');
+  //       await checkBal(astETH, lenderA.address, '1');
+
+  //       await checkBal(stETH, lenderB.address, '100000');
+  //       await checkBal(astETH, lenderB.address, '0');
+
+  //       await checkBal(stETH, borrowerA.address, '0.5');
+  //       await checkBal(debtToken, borrowerA.address, '0.5');
+
+  //       await checkBal(stETH, astETH.address, '0.5');
+
+  //       // rebase
+  //       await rebase(stETH, +1.0); // + 100%
+
+  //       await checkBal(stETH, lenderA.address, '199998');
+  //       await checkBal(astETH, lenderA.address, '1.5');
+
+  //       await checkBal(stETH, lenderB.address, '200000');
+  //       await checkBal(astETH, lenderB.address, '0');
+
+  //       await checkBal(stETH, borrowerA.address, '1');
+  //       await checkBal(debtToken, borrowerA.address, '0.5');
+
+  //       await checkBal(stETH, astETH.address, '1');
+
+  //       // repay
+  //       await stETH.connect(borrowerA.signer).approve(pool.address, await fxtPt(stETH, '1'));
+  //       await pool
+  //         .connect(borrowerA.signer)
+  //         .repay(stETH.address, await fxtPt(stETH, '1'), RateMode.Variable, borrowerA.address);
+
+  //       await checkBal(stETH, lenderA.address, '199998');
+  //       await checkBal(astETH, lenderA.address, '1.5');
+
+  //       await checkBal(stETH, lenderB.address, '200000');
+  //       await checkBal(astETH, lenderB.address, '0');
+
+  //       await checkBalGt(stETH, borrowerA.address, '0');
+  //       await checkBal(debtToken, borrowerA.address, '0');
+
+  //       await checkBal(stETH, astETH.address, '1.5');
+
+  //       // deposit
+  //       await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '1'));
+  //       await pool
+  //         .connect(lenderB.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '1'), lenderB.address, '0');
+
+  //       await checkBal(stETH, lenderA.address, '199998');
+  //       await checkBal(astETH, lenderA.address, '1.5');
+
+  //       await checkBal(stETH, lenderB.address, '199999');
+  //       await checkBal(astETH, lenderB.address, '1');
+
+  //       await checkBalGt(stETH, borrowerA.address, '0');
+  //       await checkBal(debtToken, borrowerA.address, '0');
+
+  //       await checkBal(stETH, astETH.address, '2.5');
+
+  //       // rebase
+  //       await rebase(stETH, +1.0); // + 100%
+
+  //       await checkBal(stETH, lenderA.address, '399996');
+  //       await checkBal(astETH, lenderA.address, '3');
+
+  //       await checkBal(stETH, lenderB.address, '399998');
+  //       await checkBal(astETH, lenderB.address, '2');
+
+  //       await checkBalGt(stETH, borrowerA.address, '0');
+  //       await checkBal(debtToken, borrowerA.address, '0');
+
+  //       await checkBal(stETH, astETH.address, '5');
+  //     });
+  //   });
+
+  //   describe('when lenderA deposits 1000 StETH, transfers more than he has', function () {
+  //     it('should update balances correctly', async () => {
+  //       const { pool, stETH } = testEnv;
+
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000'));
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
+
+  //       await expect(
+  //         astETH.connect(lenderA.signer).transfer(lenderAAddress, await fxtPt(stETH, '1001'))
+  //       ).to.be.revertedWith('transfer amount exceeds balance');
+  //     });
+  //   });
+
+  //   describe('when borrowed amount > 0', function () {
+  //     describe('when lenderA deposits 1000 StETH, transfers all to himself', function () {
+  //       it('should update balances correctly', async () => {
+  //         const { pool, dai, stETH } = testEnv;
+
+  //         await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000'));
+  //         await pool
+  //           .connect(lenderA.signer)
+  //           .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
+
+  //         await dai.mint(await fxtPt(dai, '200000'));
+  //         await dai.transfer(borrowerAAddress, await fxtPt(dai, '200000'));
+  //         await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '200000'));
+  //         await pool
+  //           .connect(borrowerA.signer)
+  //           .deposit(dai.address, await fxtPt(dai, '200000'), borrowerAAddress, '0');
+
+  //         await pool
+  //           .connect(borrowerA.signer)
+  //           .borrow(
+  //             stETH.address,
+  //             await fxtPt(stETH, '250'),
+  //             RateMode.Variable,
+  //             '0',
+  //             borrowerAAddress
+  //           );
+
+  //         const beforeBalance = await astETH.scaledBalanceOf(lenderAAddress);
+  //         await astETH
+  //           .connect(lenderA.signer)
+  //           .transfer(lenderAAddress, await astETH.balanceOf(lenderAAddress));
+  //         const afterBalance = await astETH.scaledBalanceOf(lenderAAddress);
+
+  //         expect(beforeBalance.toString()).to.be.equal(afterBalance.toString());
+  //       });
+  //     });
+
+  //     describe('when lenderA deposits 1000 StETH, transfers more than he has', function () {
+  //       it('should update balances correctly', async () => {
+  //         const { pool, dai, stETH } = testEnv;
+
+  //         await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000'));
+  //         await pool
+  //           .connect(lenderA.signer)
+  //           .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
+
+  //         await dai.mint(await fxtPt(dai, '200000'));
+  //         await dai.transfer(borrowerAAddress, await fxtPt(dai, '200000'));
+  //         await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '200000'));
+  //         await pool
+  //           .connect(borrowerA.signer)
+  //           .deposit(dai.address, await fxtPt(dai, '200000'), borrowerAAddress, '0');
+
+  //         await pool
+  //           .connect(borrowerA.signer)
+  //           .borrow(
+  //             stETH.address,
+  //             await fxtPt(stETH, '250'),
+  //             RateMode.Variable,
+  //             '0',
+  //             borrowerAAddress
+  //           );
+
+  //         await expect(
+  //           astETH.connect(lenderA.signer).transfer(lenderAAddress, await fxtPt(stETH, '1001'))
+  //         ).to.be.revertedWith('transfer amount exceeds balance');
+  //       });
+  //     });
+  //   });
+  // });
+
+  // describe('user deposit', function () {
+  //   describe('first deposit', function () {
+  //     it('should mint correct number of astETH tokens', async () => {
+  //       const { pool, stETH } = testEnv;
+
+  //       await checkBal(stETH, lenderAAddress, '100000');
+  //       await checkBal(astETH, lenderAAddress, '0');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '0');
+  //       await checkSupply(astETH, '0');
+
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000'));
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
+
+  //       expect(await astETH.balanceOf(lenderAAddress)).to.eq(await fxtPt(stETH, '1000'));
+
+  //       await checkBal(stETH, lenderAAddress, '99000');
+  //       await checkBal(astETH, lenderAAddress, '1000');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '1000');
+  //       await checkSupply(astETH, '1000');
+  //     });
+
+  //     it('should update balances after positive rebase', async () => {
+  //       const { pool, stETH } = testEnv;
+
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000'));
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
+
+  //       await checkBal(stETH, lenderAAddress, '99000');
+  //       await checkBal(astETH, lenderAAddress, '1000');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '1000');
+  //       await checkSupply(astETH, '1000');
+
+  //       await rebase(stETH, 0.1); // + 10%
+
+  //       expect(await astETH.balanceOf(lenderAAddress)).to.eq(await fxtPt(stETH, '1100'));
+
+  //       await checkBal(stETH, lenderAAddress, '108900');
+  //       await checkBal(astETH, lenderAAddress, '1100');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '1100');
+  //       await checkSupply(astETH, '1100');
+  //     });
+
+  //     it('should update balances after negative rebase', async () => {
+  //       const { pool, stETH } = testEnv;
+
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000'));
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
+
+  //       await checkBal(stETH, lenderAAddress, '99000');
+  //       await checkBal(astETH, lenderAAddress, '1000');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '1000');
+  //       await checkSupply(astETH, '1000');
+
+  //       await rebase(stETH, -0.1); // - 10%
+
+  //       expect(await astETH.balanceOf(lenderAAddress)).to.eq(await fxtPt(stETH, '900'));
+
+  //       await checkBal(stETH, lenderAAddress, '89100');
+  //       await checkBal(astETH, lenderAAddress, '900');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '900');
+  //       await checkSupply(astETH, '900');
+  //     });
+
+  //     it('should update balances after neutral rebase', async () => {
+  //       const { pool, stETH } = testEnv;
+
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000'));
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
+
+  //       await checkBal(stETH, lenderAAddress, '99000');
+  //       await checkBal(astETH, lenderAAddress, '1000');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '1000');
+  //       await checkSupply(astETH, '1000');
+
+  //       await rebase(stETH, 0);
+
+  //       expect(await astETH.balanceOf(lenderAAddress)).to.eq(await fxtPt(stETH, '1000'));
+
+  //       await checkBal(stETH, lenderAAddress, '99000');
+  //       await checkBal(astETH, lenderAAddress, '1000');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '1000');
+  //       await checkSupply(astETH, '1000');
+  //     });
+  //   });
+
+  //   describe('lone user', function () {
+  //     it('should mint correct number of astETH tokens', async () => {
+  //       const { pool, stETH } = testEnv;
+
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '11000'));
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
+
+  //       await checkBal(stETH, lenderAAddress, '99000');
+  //       await checkBal(astETH, lenderAAddress, '1000');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '1000');
+  //       await checkSupply(astETH, '1000');
+
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '10000'), lenderAAddress, '0');
+
+  //       expect(await astETH.balanceOf(lenderAAddress)).to.eq(await fxtPt(stETH, '11000'));
+
+  //       await checkBal(stETH, lenderAAddress, '89000');
+  //       await checkBal(astETH, lenderAAddress, '11000');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '11000');
+  //       await checkSupply(astETH, '11000');
+  //     });
+
+  //     it('should update balances after positive rebase', async () => {
+  //       const { pool, stETH } = testEnv;
+
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '11000'));
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '10000'), lenderAAddress, '0');
+
+  //       await checkBal(stETH, lenderAAddress, '89000');
+  //       await checkBal(astETH, lenderAAddress, '11000');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '11000');
+  //       await checkSupply(astETH, '11000');
+
+  //       await rebase(stETH, +0.1);
+
+  //       expect(await astETH.balanceOf(lenderAAddress)).to.eq(await fxtPt(stETH, '12100'));
+
+  //       await checkBal(stETH, lenderAAddress, '97900');
+  //       await checkBal(astETH, lenderAAddress, '12100');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '12100');
+  //       await checkSupply(astETH, '12100');
+  //     });
+
+  //     it('should update balances after negative rebase', async () => {
+  //       const { pool, stETH } = testEnv;
+
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '11000'));
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '10000'), lenderAAddress, '0');
+
+  //       await checkBal(stETH, lenderAAddress, '89000');
+  //       await checkBal(astETH, lenderAAddress, '11000');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '11000');
+  //       await checkSupply(astETH, '11000');
+
+  //       await rebase(stETH, -0.1);
+
+  //       expect(await astETH.balanceOf(lenderAAddress)).to.eq(await fxtPt(stETH, '9900'));
+
+  //       await checkBal(stETH, lenderAAddress, '80100');
+  //       await checkBal(astETH, lenderAAddress, '9900');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '9900');
+  //       await checkSupply(astETH, '9900');
+  //     });
+  //   });
+
+  //   describe('many users', function () {
+  //     it('should mint correct number of astETH tokens', async () => {
+  //       const { pool, stETH } = testEnv;
+
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '33000'));
+  //       await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '5000'));
+  //       await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '350'));
+
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '30000'), lenderAAddress, '0');
+  //       await pool
+  //         .connect(lenderB.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '5000'), lenderBAddress, '0');
+  //       await pool
+  //         .connect(lenderC.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '350'), lenderCAddress, '0');
+
+  //       await checkBal(stETH, lenderAAddress, '70000');
+  //       await checkBal(stETH, lenderBAddress, '95000');
+  //       await checkBal(stETH, lenderCAddress, '99650');
+  //       await checkBal(astETH, lenderAAddress, '30000');
+  //       await checkBal(astETH, lenderBAddress, '5000');
+  //       await checkBal(astETH, lenderCAddress, '350');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '35350');
+  //       await checkSupply(astETH, '35350');
+
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '3000'), lenderAAddress, '0');
+
+  //       expect(await astETH.balanceOf(lenderAAddress)).to.eq(await fxtPt(stETH, '33000'));
+
+  //       await checkBal(stETH, lenderAAddress, '67000');
+  //       await checkBal(stETH, lenderBAddress, '95000');
+  //       await checkBal(stETH, lenderCAddress, '99650');
+  //       await checkBal(astETH, lenderAAddress, '33000');
+  //       await checkBal(astETH, lenderBAddress, '5000');
+  //       await checkBal(astETH, lenderCAddress, '350');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '38350');
+  //       await checkSupply(astETH, '38350');
+  //     });
+
+  //     it('should update balances after positive rebase', async () => {
+  //       const { pool, stETH } = testEnv;
+
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '33000'));
+  //       await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '5000'));
+  //       await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '350'));
+
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '30000'), lenderAAddress, '0');
+  //       await pool
+  //         .connect(lenderB.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '5000'), lenderBAddress, '0');
+  //       await pool
+  //         .connect(lenderC.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '350'), lenderCAddress, '0');
+
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '3000'), lenderAAddress, '0');
+
+  //       expect(await astETH.balanceOf(lenderAAddress)).to.eq(await fxtPt(stETH, '33000'));
+
+  //       await checkBal(stETH, lenderAAddress, '67000');
+  //       await checkBal(stETH, lenderBAddress, '95000');
+  //       await checkBal(stETH, lenderCAddress, '99650');
+  //       await checkBal(astETH, lenderAAddress, '33000');
+  //       await checkBal(astETH, lenderBAddress, '5000');
+  //       await checkBal(astETH, lenderCAddress, '350');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '38350');
+  //       await checkSupply(astETH, '38350');
+
+  //       await rebase(stETH, +0.1);
+
+  //       expect(await astETH.balanceOf(lenderAAddress)).to.eq(await fxtPt(stETH, '36300'));
+
+  //       await checkBal(stETH, lenderAAddress, '73700');
+  //       await checkBal(stETH, lenderBAddress, '104500');
+  //       await checkBal(stETH, lenderCAddress, '109615');
+  //       await checkBal(astETH, lenderAAddress, '36300');
+  //       await checkBal(astETH, lenderBAddress, '5500');
+  //       await checkBal(astETH, lenderCAddress, '385');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '42185');
+  //       await checkSupply(astETH, '42185');
+  //     });
+
+  //     it('should update balances after negative rebase', async () => {
+  //       const { pool, stETH } = testEnv;
+
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '33000'));
+  //       await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '5000'));
+  //       await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '350'));
+
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '30000'), lenderAAddress, '0');
+  //       await pool
+  //         .connect(lenderB.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '5000'), lenderBAddress, '0');
+  //       await pool
+  //         .connect(lenderC.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '350'), lenderCAddress, '0');
+
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '3000'), lenderAAddress, '0');
+
+  //       expect(await astETH.balanceOf(lenderAAddress)).to.eq(await fxtPt(stETH, '33000'));
+
+  //       await checkBal(stETH, lenderAAddress, '67000');
+  //       await checkBal(stETH, lenderBAddress, '95000');
+  //       await checkBal(stETH, lenderCAddress, '99650');
+  //       await checkBal(astETH, lenderAAddress, '33000');
+  //       await checkBal(astETH, lenderBAddress, '5000');
+  //       await checkBal(astETH, lenderCAddress, '350');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '38350');
+  //       await checkSupply(astETH, '38350');
+
+  //       await rebase(stETH, -0.1);
+
+  //       expect(await astETH.balanceOf(lenderAAddress)).to.eq(await fxtPt(stETH, '29700'));
+
+  //       await checkBal(stETH, lenderAAddress, '60300');
+  //       await checkBal(stETH, lenderBAddress, '85500');
+  //       await checkBal(stETH, lenderCAddress, '89685');
+  //       await checkBal(astETH, lenderAAddress, '29700');
+  //       await checkBal(astETH, lenderBAddress, '4500');
+  //       await checkBal(astETH, lenderCAddress, '315');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '34515');
+  //       await checkSupply(astETH, '34515');
+  //     });
+  //   });
+
+  //   describe('v large deposit', function () {
+  //     it('should mint correct number of astETH tokens', async () => {
+  //       const { deployer, pool, stETH } = testEnv;
+
+  //       await stETH.connect(deployer.signer).transfer(lenderAAddress, await fxtPt(stETH, '100000'));
+  //       await rebase(stETH, 9999);
+
+  //       await checkSupply(stETH, '10000000000000');
+
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000000000'));
+  //       await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '500000000'));
+  //       await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '500000000'));
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '1000000000'), lenderAAddress, '0');
+  //       await pool
+  //         .connect(lenderB.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '500000000'), lenderBAddress, '0');
+  //       await pool
+  //         .connect(lenderC.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '500000000'), lenderCAddress, '0');
+
+  //       await checkBal(stETH, lenderAAddress, '1000000000', 10000);
+  //       await checkBal(stETH, lenderBAddress, '500000000', 10000);
+  //       await checkBal(stETH, lenderCAddress, '500000000', 10000);
+  //       await checkBal(astETH, lenderAAddress, '1000000000', 10000);
+  //       await checkBal(stETH, reserveData.aTokenAddress, '2000000000', 10000);
+  //       await checkSupply(astETH, '2000000000', 10000);
+
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '10'));
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '10'), lenderAAddress, '0');
+
+  //       expect(await astETH.balanceOf(lenderAAddress)).to.eq(await fxtPt(stETH, '1000000010'));
+
+  //       await checkBal(stETH, lenderAAddress, '999999990');
+  //       await checkBal(stETH, lenderBAddress, '500000000', 10000);
+  //       await checkBal(stETH, lenderCAddress, '500000000', 10000);
+  //       await checkBal(astETH, lenderAAddress, '1000000010');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '2000000010', 10000);
+  //       await checkSupply(astETH, '2000000010', 10000);
+  //     });
+  //   });
+
+  //   describe('when borrow>0', function () {
+  //     it('should mint correct number of astETH tokens', async () => {
+  //       const { deployer, dai, pool, stETH } = testEnv;
+
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '33000'));
+  //       await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '5000'));
+  //       await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '400'));
+
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '30000'), lenderAAddress, '0');
+  //       await pool
+  //         .connect(lenderB.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '5000'), lenderBAddress, '0');
+  //       await pool
+  //         .connect(lenderC.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '350'), lenderCAddress, '0');
+
+  //       // borrower borrows 2500 StETH
+  //       await dai.connect(deployer.signer).mint(await fxtPt(dai, '20000000'));
+  //       await dai.transfer(borrowerAAddress, await fxtPt(dai, '20000000'));
+  //       await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '20000000'));
+  //       await pool
+  //         .connect(borrowerA.signer)
+  //         .deposit(dai.address, await fxtPt(dai, '20000000'), borrowerAAddress, '0');
+  //       await pool
+  //         .connect(borrowerA.signer)
+  //         .borrow(
+  //           stETH.address,
+  //           await fxtPt(stETH, '2500'),
+  //           RateMode.Variable,
+  //           '0',
+  //           borrowerAAddress
+  //         );
+
+  //       await checkBal(stETH, lenderAAddress, '70000');
+  //       await checkBal(stETH, lenderBAddress, '95000');
+  //       await checkBal(stETH, lenderCAddress, '99650');
+  //       await checkBal(astETH, lenderAAddress, '30000');
+  //       await checkBal(astETH, lenderBAddress, '5000');
+  //       await checkBal(astETH, lenderCAddress, '350');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '32850');
+  //       await checkSupply(astETH, '35350');
+
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '3000'), lenderAAddress, '0');
+
+  //       expect(await astETH.balanceOf(lenderAAddress)).to.be.bignumber.gte(
+  //         await fxtPt(stETH, '33000')
+  //       );
+
+  //       await checkBal(stETH, lenderAAddress, '67000');
+  //       await checkBal(stETH, lenderBAddress, '95000');
+  //       await checkBal(stETH, lenderCAddress, '99650');
+  //       await checkBal(astETH, lenderAAddress, '33000');
+  //       await checkBal(astETH, lenderBAddress, '5000');
+  //       await checkBal(astETH, lenderCAddress, '350');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '35850');
+  //       await checkSupply(astETH, '38350');
+  //     });
+
+  //     it('should update balances on positive rebase', async () => {
+  //       const { deployer, dai, pool, stETH } = testEnv;
+
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '33000'));
+  //       await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '5000'));
+  //       await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '350'));
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '33000'), lenderAAddress, '0');
+  //       await pool
+  //         .connect(lenderB.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '5000'), lenderBAddress, '0');
+  //       await pool
+  //         .connect(lenderC.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '350'), lenderCAddress, '0');
+
+  //       await dai.connect(deployer.signer).mint(await fxtPt(dai, '20000000'));
+  //       await dai.transfer(borrowerAAddress, await fxtPt(dai, '20000000'));
+  //       await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '20000000'));
+  //       await pool
+  //         .connect(borrowerA.signer)
+  //         .deposit(dai.address, await fxtPt(dai, '20000000'), borrowerAAddress, '0');
+  //       await pool
+  //         .connect(borrowerA.signer)
+  //         .borrow(
+  //           stETH.address,
+  //           await fxtPt(stETH, '2500'),
+  //           RateMode.Variable,
+  //           '0',
+  //           borrowerAAddress
+  //         );
+
+  //       await checkBal(stETH, lenderAAddress, '67000');
+  //       await checkBal(stETH, lenderBAddress, '95000');
+  //       await checkBal(stETH, lenderCAddress, '99650');
+  //       await checkBal(astETH, lenderAAddress, '33000');
+  //       await checkBal(astETH, lenderBAddress, '5000');
+  //       await checkBal(astETH, lenderCAddress, '350');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '35850');
+  //       await checkSupply(astETH, '38350');
+
+  //       await rebase(stETH, +0.1);
+
+  //       await checkBal(stETH, lenderAAddress, '73700');
+  //       await checkBal(stETH, lenderBAddress, '104500');
+  //       await checkBal(stETH, lenderCAddress, '109615');
+  //       await checkBal(astETH, lenderAAddress, '36084.87');
+  //       await checkBal(astETH, lenderBAddress, '5467.40');
+  //       await checkBal(astETH, lenderCAddress, '382.71');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '39435.00');
+
+  //       // unborrowed (39435.00) + borrowed (2500)
+  //       await checkSupply(astETH, '41935.00');
+  //     });
+
+  //     it('should update balances on negative rebase', async () => {
+  //       const { deployer, dai, pool, stETH } = testEnv;
+
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '33000'));
+  //       await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '5000'));
+  //       await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '350'));
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '33000'), lenderAAddress, '0');
+  //       await pool
+  //         .connect(lenderB.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '5000'), lenderBAddress, '0');
+  //       await pool
+  //         .connect(lenderC.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '350'), lenderCAddress, '0');
+
+  //       await dai.connect(deployer.signer).mint(await fxtPt(dai, '2000000'));
+  //       await dai.transfer(borrowerAAddress, await fxtPt(dai, '2000000'));
+  //       await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '2000000'));
+  //       await pool
+  //         .connect(borrowerA.signer)
+  //         .deposit(dai.address, await fxtPt(dai, '2000000'), borrowerAAddress, '0');
+  //       await pool
+  //         .connect(borrowerA.signer)
+  //         .borrow(
+  //           stETH.address,
+  //           await fxtPt(stETH, '2500'),
+  //           RateMode.Variable,
+  //           '0',
+  //           borrowerAAddress
+  //         );
+
+  //       await checkBal(stETH, lenderAAddress, '67000');
+  //       await checkBal(stETH, lenderBAddress, '95000');
+  //       await checkBal(stETH, lenderCAddress, '99650');
+  //       await checkBal(astETH, lenderAAddress, '33000');
+  //       await checkBal(astETH, lenderBAddress, '5000');
+  //       await checkBal(astETH, lenderCAddress, '350');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '35850');
+  //       await checkSupply(astETH, '38350');
+
+  //       await rebase(stETH, -0.1);
+
+  //       await checkBal(stETH, lenderAAddress, '60300');
+  //       await checkBal(stETH, lenderBAddress, '85500');
+  //       await checkBal(stETH, lenderCAddress, '89685');
+  //       await checkBal(astETH, lenderAAddress, '29915.12');
+  //       await checkBal(astETH, lenderBAddress, '4532.59');
+  //       await checkBal(astETH, lenderCAddress, '317.28');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '32265');
+
+  //       // unborrowed (32265.00) + borrowed (2500)
+  //       await checkSupply(astETH, '34765.00');
+  //     });
+  //   });
+  // });
+
+  // describe('user withdraw', function () {
+  //   describe('single deposit partial withdraw', function () {
+  //     it('should burn correct number of astETH tokens', async () => {
+  //       const { pool, stETH } = testEnv;
+
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000'));
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
+
+  //       await checkBal(stETH, lenderAAddress, '99000');
+  //       await checkBal(astETH, lenderAAddress, '1000');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '1000');
+  //       await checkSupply(astETH, '1000');
+
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .withdraw(stETH.address, await fxtPt(stETH, '100'), lenderAAddress);
+
+  //       await checkBal(stETH, lenderAAddress, '99100');
+  //       await checkBal(astETH, lenderAAddress, '900');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '900');
+  //       await checkSupply(astETH, '900');
+  //     });
+  //   });
+
+  //   describe('single deposit full withdraw', function () {
+  //     it('should burn correct number of astETH tokens', async () => {
+  //       const { pool, stETH } = testEnv;
+
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000'));
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
+
+  //       await checkBal(stETH, lenderAAddress, '99000');
+  //       await checkBal(astETH, lenderAAddress, '1000');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '1000');
+  //       await checkSupply(astETH, '1000');
+
+  //       await pool.connect(lenderA.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
+
+  //       await checkBal(stETH, lenderAAddress, '100000');
+  //       await checkBal(astETH, lenderAAddress, '0');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '0');
+  //       await checkSupply(astETH, '0');
+  //     });
+
+  //     it('should burn correct number of astETH positive rebase', async () => {
+  //       const { pool, stETH } = testEnv;
+
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000'));
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
+
+  //       await checkBal(stETH, lenderAAddress, '99000');
+  //       await checkBal(astETH, lenderAAddress, '1000');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '1000');
+  //       await checkSupply(astETH, '1000');
+
+  //       await rebase(stETH, 0.1); // + 10%
+  //       await pool.connect(lenderA.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
+
+  //       await checkBal(stETH, lenderAAddress, '110000');
+  //       await checkBal(astETH, lenderAAddress, '0');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '0');
+  //       await checkSupply(astETH, '0');
+  //     });
+
+  //     it('should burn correct number of astETH negative rebase', async () => {
+  //       const { pool, stETH } = testEnv;
+
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000'));
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
+
+  //       await checkBal(stETH, lenderAAddress, '99000');
+  //       await checkBal(astETH, lenderAAddress, '1000');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '1000');
+  //       await checkSupply(astETH, '1000');
+
+  //       await rebase(stETH, -0.1); // - 10%
+  //       await pool.connect(lenderA.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
+
+  //       await checkBal(stETH, lenderAAddress, '90000');
+  //       await checkBal(astETH, lenderAAddress, '0');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '0');
+  //       await checkSupply(astETH, '0');
+  //     });
+  //   });
+
+  //   describe('lone user multiple withdraws', function () {
+  //     it('should burn correct number of astETH tokens', async () => {
+  //       const { pool, stETH } = testEnv;
+
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '10000'));
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '10000'), lenderAAddress, '0');
+
+  //       await checkBal(stETH, lenderAAddress, '90000');
+  //       await checkBal(astETH, lenderAAddress, '10000');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '10000');
+  //       await checkSupply(astETH, '10000');
+
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .withdraw(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress);
+
+  //       await checkBal(stETH, lenderAAddress, '91000');
+  //       await checkBal(astETH, lenderAAddress, '9000');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '9000');
+  //       await checkSupply(astETH, '9000');
+
+  //       await advanceTimeAndBlock(3600 * 24 * 365); // 1 year
+  //       await pool.connect(lenderA.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
+
+  //       await checkBal(stETH, lenderAAddress, '100000');
+  //       await checkBal(astETH, lenderAAddress, '0');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '0');
+  //       await checkSupply(astETH, '0');
+  //     });
+  //   });
+
+  //   describe('multiple withdraws', function () {
+  //     it('should burn correct number of astETH tokens', async () => {
+  //       const { pool, stETH } = testEnv;
+
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '33000'));
+  //       await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '5000'));
+  //       await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '350'));
+
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '30000'), lenderAAddress, '0');
+  //       await pool
+  //         .connect(lenderB.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '5000'), lenderBAddress, '0');
+  //       await pool
+  //         .connect(lenderC.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '350'), lenderCAddress, '0');
+
+  //       await checkBal(stETH, lenderAAddress, '70000');
+  //       await checkBal(stETH, lenderBAddress, '95000');
+  //       await checkBal(stETH, lenderCAddress, '99650');
+  //       await checkBal(astETH, lenderAAddress, '30000');
+  //       await checkBal(astETH, lenderBAddress, '5000');
+  //       await checkBal(astETH, lenderCAddress, '350');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '35350');
+  //       await checkSupply(astETH, '35350');
+
+  //       await pool.connect(lenderC.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderCAddress);
+  //       await pool.connect(lenderB.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderBAddress);
+  //       await pool.connect(lenderA.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
+
+  //       await checkBal(stETH, lenderAAddress, '100000');
+  //       await checkBal(stETH, lenderBAddress, '100000');
+  //       await checkBal(stETH, lenderCAddress, '100000');
+  //       await checkBal(astETH, lenderAAddress, '0');
+  //       await checkBal(astETH, lenderBAddress, '0');
+  //       await checkBal(astETH, lenderCAddress, '0');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '0');
+  //       await checkSupply(astETH, '0');
+  //     });
+  //   });
+
+  //   describe('v large withdraw', function () {
+  //     it('should burn correct number of astETH tokens', async () => {
+  //       const { deployer, pool, stETH } = testEnv;
+
+  //       await stETH.connect(deployer.signer).transfer(lenderAAddress, await fxtPt(stETH, '100000'));
+  //       await rebase(stETH, 9999);
+
+  //       await checkSupply(stETH, '10000000000000');
+
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000000000'));
+  //       await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '500000000'));
+  //       await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '500000000'));
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '1000000000'), lenderAAddress, '0');
+  //       await pool
+  //         .connect(lenderB.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '500000000'), lenderBAddress, '0');
+  //       await pool
+  //         .connect(lenderC.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '500000000'), lenderCAddress, '0');
+
+  //       await checkBal(stETH, lenderAAddress, '1000000000', 10000);
+  //       await checkBal(stETH, lenderBAddress, '500000000', 10000);
+  //       await checkBal(stETH, lenderCAddress, '500000000', 10000);
+  //       await checkBal(astETH, lenderAAddress, '1000000000', 10000);
+  //       await checkBal(stETH, reserveData.aTokenAddress, '2000000000', 10000);
+  //       await checkSupply(astETH, '2000000000', 10000);
+
+  //       await pool.connect(lenderA.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
+
+  //       await checkBal(stETH, lenderAAddress, '2000000000', 10000);
+  //       await checkBal(stETH, lenderBAddress, '500000000', 10000);
+  //       await checkBal(stETH, lenderCAddress, '500000000', 10000);
+  //       await checkBal(astETH, lenderAAddress, '0');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '1000000000', 10000);
+  //       await checkSupply(astETH, '1000000000', 10000);
+  //     });
+  //   });
+
+  //   describe('when borrow>0', function () {
+  //     it('should burn correct number of astETH tokens', async () => {
+  //       const { deployer, dai, pool, stETH } = testEnv;
+
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '33000'));
+  //       await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '5000'));
+  //       await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '350'));
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '33000'), lenderAAddress, '0');
+  //       await pool
+  //         .connect(lenderB.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '5000'), lenderBAddress, '0');
+  //       await pool
+  //         .connect(lenderC.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '350'), lenderCAddress, '0');
+
+  //       // borrower borrows 2500 StETH
+  //       await dai.connect(deployer.signer).mint(await fxtPt(dai, '2000000'));
+  //       await dai.transfer(borrowerAAddress, await fxtPt(dai, '2000000'));
+  //       await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '2000000'));
+  //       await pool
+  //         .connect(borrowerA.signer)
+  //         .deposit(dai.address, await fxtPt(dai, '2000000'), borrowerAAddress, '0');
+  //       await pool
+  //         .connect(borrowerA.signer)
+  //         .borrow(
+  //           stETH.address,
+  //           await fxtPt(stETH, '2500'),
+  //           RateMode.Variable,
+  //           '0',
+  //           borrowerAAddress
+  //         );
+
+  //       await checkBal(stETH, lenderAAddress, '67000');
+  //       await checkBal(stETH, lenderBAddress, '95000');
+  //       await checkBal(stETH, lenderCAddress, '99650');
+  //       await checkBal(astETH, lenderAAddress, '33000');
+  //       await checkBal(astETH, lenderBAddress, '5000');
+  //       await checkBal(astETH, lenderCAddress, '350');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '35850');
+  //       await checkSupply(astETH, '38350');
+
+  //       await pool.connect(lenderC.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderCAddress);
+
+  //       await checkBal(stETH, lenderAAddress, '67000');
+  //       await checkBal(stETH, lenderBAddress, '95000');
+  //       await checkBal(stETH, lenderCAddress, '100000');
+  //       await checkBal(astETH, lenderAAddress, '33000');
+  //       await checkBal(astETH, lenderBAddress, '5000');
+  //       await checkBal(astETH, lenderCAddress, '0');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '35500');
+  //       await checkSupply(astETH, '38000');
+  //     });
+
+  //     it('should update balances on positive rebase', async () => {
+  //       const { deployer, dai, pool, stETH } = testEnv;
+
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '33000'));
+  //       await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '5000'));
+  //       await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '350'));
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '33000'), lenderAAddress, '0');
+  //       await pool
+  //         .connect(lenderB.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '5000'), lenderBAddress, '0');
+  //       await pool
+  //         .connect(lenderC.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '350'), lenderCAddress, '0');
+
+  //       // borrower borrows 2500 StETH
+  //       await dai.connect(deployer.signer).mint(await fxtPt(dai, '2000000'));
+  //       await dai.transfer(borrowerAAddress, await fxtPt(dai, '2000000'));
+  //       await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '2000000'));
+  //       await pool
+  //         .connect(borrowerA.signer)
+  //         .deposit(dai.address, await fxtPt(dai, '2000000'), borrowerAAddress, '0');
+  //       await pool
+  //         .connect(borrowerA.signer)
+  //         .borrow(
+  //           stETH.address,
+  //           await fxtPt(stETH, '2500'),
+  //           RateMode.Variable,
+  //           '0',
+  //           borrowerAAddress
+  //         );
+
+  //       await checkBal(stETH, lenderAAddress, '67000');
+  //       await checkBal(stETH, lenderBAddress, '95000');
+  //       await checkBal(stETH, lenderCAddress, '99650');
+  //       await checkBal(astETH, lenderAAddress, '33000');
+  //       await checkBal(astETH, lenderBAddress, '5000');
+  //       await checkBal(astETH, lenderCAddress, '350');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '35850');
+  //       await checkSupply(astETH, '38350');
+
+  //       await rebase(stETH, +0.1);
+  //       await pool.connect(lenderC.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderCAddress);
+
+  //       await checkBal(stETH, lenderAAddress, '73700');
+  //       await checkBal(stETH, lenderBAddress, '104500');
+  //       await checkBal(stETH, lenderCAddress, '109997.71');
+  //       await checkBal(astETH, lenderAAddress, '36084.87');
+  //       await checkBal(astETH, lenderBAddress, '5467.40');
+  //       await checkBal(astETH, lenderCAddress, '0');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '39052.28');
+  //       await checkSupply(astETH, '41552.28');
+  //     });
+
+  //     it('should update balances on negative rebase', async () => {
+  //       const { deployer, dai, pool, stETH } = testEnv;
+
+  //       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '33000'));
+  //       await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '5000'));
+  //       await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '350'));
+  //       await pool
+  //         .connect(lenderA.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '33000'), lenderAAddress, '0');
+  //       await pool
+  //         .connect(lenderB.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '5000'), lenderBAddress, '0');
+  //       await pool
+  //         .connect(lenderC.signer)
+  //         .deposit(stETH.address, await fxtPt(stETH, '350'), lenderCAddress, '0');
+
+  //       // borrower borrows 2500 StETH
+  //       await dai.connect(deployer.signer).mint(await fxtPt(dai, '2000000'));
+  //       await dai.transfer(borrowerAAddress, await fxtPt(dai, '2000000'));
+  //       await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '2000000'));
+  //       await pool
+  //         .connect(borrowerA.signer)
+  //         .deposit(dai.address, await fxtPt(dai, '2000000'), borrowerAAddress, '0');
+  //       await pool
+  //         .connect(borrowerA.signer)
+  //         .borrow(
+  //           stETH.address,
+  //           await fxtPt(stETH, '2500'),
+  //           RateMode.Variable,
+  //           '0',
+  //           borrowerAAddress
+  //         );
+
+  //       await checkBal(stETH, lenderAAddress, '67000');
+  //       await checkBal(stETH, lenderBAddress, '95000');
+  //       await checkBal(stETH, lenderCAddress, '99650');
+  //       await checkBal(astETH, lenderAAddress, '33000');
+  //       await checkBal(astETH, lenderBAddress, '5000');
+  //       await checkBal(astETH, lenderCAddress, '350');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '35850');
+  //       await checkSupply(astETH, '38350');
+
+  //       await rebase(stETH, -0.1);
+  //       await pool.connect(lenderC.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderCAddress);
+
+  //       await checkBal(stETH, lenderAAddress, '60300');
+  //       await checkBal(stETH, lenderBAddress, '85500');
+  //       await checkBal(stETH, lenderCAddress, '90002.28');
+  //       await checkBal(astETH, lenderAAddress, '29915.12');
+  //       await checkBal(astETH, lenderBAddress, '4532.59');
+  //       await checkBal(astETH, lenderCAddress, '0');
+  //       await checkBal(stETH, reserveData.aTokenAddress, '31947.72');
+  //       await checkSupply(astETH, '34447.72');
+  //     });
+  //   });
+  // });
+
+  // describe('user borrow repay with interest', function () {
+  //   it('should update accounting', async () => {
+  //     const { pool, dai, stETH } = testEnv;
+
+  //     // lender deposits StETH
+  //     await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '10000'));
+  //     await pool
+  //       .connect(lenderA.signer)
+  //       .deposit(stETH.address, await fxtPt(stETH, '10000'), lenderAAddress, '0');
+
+  //     // borrower deposits DAI
+  //     await dai.mint(await fxtPt(dai, '2000000'));
+  //     await dai.transfer(borrowerAAddress, await fxtPt(dai, '2000000'));
+  //     await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '2000000'));
+  //     await pool
+  //       .connect(borrowerA.signer)
+  //       .deposit(dai.address, await fxtPt(dai, '2000000'), borrowerAAddress, '0');
+
+  //     await checkBal(stETH, lenderAAddress, '90000');
+  //     await checkBal(astETH, lenderAAddress, '10000');
+  //     await checkSupply(astETH, '10000');
+  //     await checkBal(stETH, reserveData.aTokenAddress, '10000');
+  //     await checkBal(stETH, borrowerAAddress, '0');
+  //     await checkBal(debtToken, borrowerAAddress, '0');
+
+  //     // borrower borrows StETH
+  //     await pool
+  //       .connect(borrowerA.signer)
+  //       .borrow(
+  //         stETH.address,
+  //         await fxtPt(stETH, '2500'),
+  //         RateMode.Variable,
+  //         '0',
+  //         borrowerAAddress
+  //       );
+
+  //     await printBalances('Borrow happens');
+
+  //     await checkBal(stETH, lenderAAddress, '90000');
+  //     await checkBal(astETH, lenderAAddress, '10000');
+  //     await checkSupply(astETH, '10000');
+  //     await checkBal(stETH, reserveData.aTokenAddress, '7500');
+  //     await checkBal(stETH, borrowerAAddress, '2500');
+  //     await checkBal(debtToken, borrowerAAddress, '2500');
+
+  //     await advanceTimeAndBlock(10 * 3600 * 24 * 365); // 10 years
+
+  //     await printBalances('10 years later');
+
+  //     await checkBal(stETH, lenderAAddress, '90000');
+  //     await checkScaledBal(astETH, lenderAAddress, '10000'); // P = 7500 + 2500
+  //     await checkBalGt(astETH, lenderAAddress, '10000'); // T = P + delta (I) > 10000
+  //     await checkSupplyGt(astETH, '10000');
+  //     await checkBal(stETH, reserveData.aTokenAddress, '7500'); // unborrowed pool balance
+  //     await checkBal(stETH, borrowerAAddress, '2500'); // borrower StETH balance
+  //     await checkBalGt(debtToken, borrowerAAddress, '2500'); // 2500 (principal) + delta (I)
+  //     await checkBal(astETH, treasuryAddress, '0');
+
+  //     // borrower gets some StETH to close out debt
+  //     await stETH.connect(lenderC.signer).transfer(borrowerAAddress, await fxtPt(stETH, '1500'));
+  //     await checkBal(stETH, borrowerAAddress, '4000', 1);
+
+  //     // borrower repays 2500 + delta (borrowed interest) StETH
+  //     await stETH.connect(borrowerA.signer).approve(pool.address, MAX_UINT_AMOUNT);
+  //     await pool
+  //       .connect(borrowerA.signer)
+  //       .repay(stETH.address, MAX_UINT_AMOUNT, RateMode.Variable, borrowerAAddress);
+
+  //     await checkBal(stETH, lenderAAddress, '90000');
+  //     await checkBalGt(astETH, lenderAAddress, '10000');
+  //     await checkSupplyGt(astETH, '10000');
+  //     await checkBalGt(stETH, reserveData.aTokenAddress, '10000');
+  //     await checkBalGt(stETH, borrowerAAddress, '0');
+  //     await checkBal(debtToken, borrowerAAddress, '0');
+  //     await checkBalGt(astETH, treasuryAddress, '0');
+
+  //     const stETHBefore = await fxtPt(stETH, '90000');
+  //     const lenderANewBalance = (await astETH.balanceOf(lenderAAddress)).add(stETHBefore);
+
+  //     await pool.connect(lenderA.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
+
+  //     const lenderBalanceActual = await stETH.balanceOf(lenderAAddress);
+
+  //     await check(lenderANewBalance, lenderBalanceActual, stETH, 0.01);
+  //     await checkBal(astETH, lenderAAddress, '0');
+
+  //     await checkSupplyGt(astETH, '0');
+  //     const treasuryAmount = await astETH.balanceOf(treasuryAddress);
+  //     const astETHTotalSupply = await astETH.totalSupply();
+  //     await check(astETHTotalSupply, treasuryAmount, astETH, 0.01);
+
+  //     await checkBalGt(stETH, reserveData.aTokenAddress, '0');
+  //     await checkBalGt(astETH, treasuryAddress, '0');
+  //   });
+  // });
+
+  // describe('user borrow repay with positive rebase', function () {
+  //   it('should update accounting', async () => {
+  //     const { pool, dai, stETH } = testEnv;
+
+  //     // lender deposits StETH
+  //     await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '10000'));
+  //     await pool
+  //       .connect(lenderA.signer)
+  //       .deposit(stETH.address, await fxtPt(stETH, '10000'), lenderAAddress, '0');
+
+  //     // borrower deposits DAI
+  //     await dai.mint(await fxtPt(dai, '2000000'));
+  //     await dai.transfer(borrowerAAddress, await fxtPt(dai, '2000000'));
+  //     await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '2000000'));
+  //     await pool
+  //       .connect(borrowerA.signer)
+  //       .deposit(dai.address, await fxtPt(dai, '2000000'), borrowerAAddress, '0');
+
+  //     // borrower borrows StETH
+  //     await pool
+  //       .connect(borrowerA.signer)
+  //       .borrow(
+  //         stETH.address,
+  //         await fxtPt(stETH, '2500'),
+  //         RateMode.Variable,
+  //         '0',
+  //         borrowerAAddress
+  //       );
+
+  //     await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 10 years
+
+  //     await rebase(stETH, +0.25); // 25% rebase
+
+  //     await checkBal(stETH, lenderAAddress, '112500');
+  //     await checkScaledBal(astETH, lenderAAddress, '11875.00'); // P = (7500*1.25) + 2500
+  //     await checkBalGt(astETH, lenderAAddress, '11875.00'); // T = P + delta (I)
+  //     await checkSupplyGt(astETH, '11875.00');
+  //     await checkBal(stETH, reserveData.aTokenAddress, '9375'); // unborrowed principal balance (7500*1.25)
+  //     await checkBal(stETH, borrowerAAddress, '3125.00'); // Borrowed StETH balance
+  //     await checkBalGt(debtToken, borrowerAAddress, '2500'); // 2500 (principal) + delta (I)
+  //     await checkBal(astETH, treasuryAddress, '0'); // Treasury
+
+  //     // borrower repays 2500 + (borrowed interest) StETH
+  //     await stETH.connect(borrowerA.signer).approve(pool.address, MAX_UINT_AMOUNT);
+  //     await pool
+  //       .connect(borrowerA.signer)
+  //       .repay(stETH.address, MAX_UINT_AMOUNT, RateMode.Variable, borrowerAAddress);
+
+  //     await checkBal(stETH, lenderAAddress, '112500');
+  //     await checkScaledBal(astETH, lenderAAddress, '11875.00');
+  //     await checkBalGt(astETH, lenderAAddress, '11875.00');
+  //     await checkSupplyGt(astETH, '11875.00');
+  //     await checkBalGt(stETH, reserveData.aTokenAddress, '11875');
+  //     await checkBalGt(stETH, borrowerAAddress, '0');
+  //     await checkBal(debtToken, borrowerAAddress, '0');
+  //     await checkBalGt(astETH, treasuryAddress, '0');
+
+  //     const stETHBefore = await stETH.balanceOf(lenderAAddress);
+  //     const expectedStETHAfter = (await astETH.balanceOf(lenderAAddress)).add(stETHBefore);
+
+  //     await pool.connect(lenderA.signer).withdraw(
+  //       stETH.address,
+  //       // await fxtPt(stETH, '12090'),
+  //       MAX_UINT_AMOUNT,
+  //       lenderAAddress
+  //     );
+
+  //     const stETHAfter = await stETH.balanceOf(lenderAAddress);
+
+  //     await check(stETHAfter, expectedStETHAfter, stETH, 0.01);
+  //     await checkScaledBal(astETH, lenderAAddress, '0');
+  //     await checkBal(astETH, lenderAAddress, '0');
+
+  //     const treasuryAmount = await astETH.balanceOf(treasuryAddress);
+  //     const astETHTotalSupply = await astETH.totalSupply();
+  //     await check(astETHTotalSupply, treasuryAmount, astETH, 0.01);
+
+  //     await checkBalGt(stETH, reserveData.aTokenAddress, '0');
+  //     await checkBalGt(stETH, borrowerAAddress, '0');
+  //     await checkBal(debtToken, borrowerAAddress, '0');
+  //     await checkBalGt(astETH, treasuryAddress, '0');
+  //   });
+  // });
+
+  // describe('user borrow repay with negative rebase', function () {
+  //   it('should update accounting', async () => {
+  //     const { pool, dai, stETH } = testEnv;
+
+  //     // lender deposits StETH
+  //     await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '10000'));
+  //     await pool
+  //       .connect(lenderA.signer)
+  //       .deposit(stETH.address, await fxtPt(stETH, '10000'), lenderAAddress, '0');
+
+  //     // borrower deposits DAI
+  //     await dai.mint(await fxtPt(dai, '20000000'));
+  //     await dai.transfer(borrowerAAddress, await fxtPt(dai, '20000000'));
+  //     await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '20000000'));
+  //     await pool
+  //       .connect(borrowerA.signer)
+  //       .deposit(dai.address, await fxtPt(dai, '20000000'), borrowerAAddress, '0');
+
+  //     // borrower borrows StETH
+  //     await pool
+  //       .connect(borrowerA.signer)
+  //       .borrow(
+  //         stETH.address,
+  //         await fxtPt(stETH, '2500'),
+  //         RateMode.Variable,
+  //         '0',
+  //         borrowerAAddress
+  //       );
+
+  //     await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 10 years
+  //     await rebase(stETH, -0.25); // -25% rebase
+
+  //     await checkBal(stETH, lenderAAddress, '67500.00');
+  //     await checkScaledBal(astETH, lenderAAddress, '8125'); // P = (7500*0.75) + 2500
+  //     await checkBalGt(astETH, lenderAAddress, '8125'); // T = P + delta (I)
+  //     await checkSupplyGt(astETH, '8125');
+  //     await checkBal(stETH, reserveData.aTokenAddress, '5625.00'); // unborrowed principal balance (7500*0.75)
+  //     await checkBal(stETH, borrowerAAddress, '1875.00'); // Borrowed StETH balance
+  //     await checkBalGt(debtToken, borrowerAAddress, '2500'); // 2500 (principal) + delta (I)
+  //     await checkBal(astETH, treasuryAddress, '0'); // Treasury
+
+  //     // friend sends borrower some stETH to pay back interest
+  //     await stETH.connect(lenderC.signer).transfer(borrowerAAddress, await fxtPt(stETH, '1000'));
+
+  //     // borrower repays 2500 + (borrowed interest) StETH
+  //     await stETH.connect(borrowerA.signer).approve(pool.address, MAX_UINT_AMOUNT);
+  //     await pool
+  //       .connect(borrowerA.signer)
+  //       .repay(stETH.address, MAX_UINT_AMOUNT, RateMode.Variable, borrowerAAddress);
+
+  //     await checkBal(stETH, lenderAAddress, '67500.00');
+  //     await checkScaledBal(astETH, lenderAAddress, '8125');
+  //     await checkBalGt(astETH, lenderAAddress, '8125');
+  //     await checkSupplyGt(astETH, '8125');
+  //     await checkBalGt(stETH, reserveData.aTokenAddress, '8125');
+  //     await checkBalGt(stETH, borrowerAAddress, '0');
+  //     await checkBal(debtToken, borrowerAAddress, '0');
+  //     await checkBalGt(astETH, treasuryAddress, '0');
+
+  //     const stETHBefore = await stETH.balanceOf(lenderAAddress);
+  //     const expectedStETHAfter = (await astETH.balanceOf(lenderAAddress)).add(stETHBefore);
+
+  //     await pool.connect(lenderA.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
+
+  //     const stETHAfter = await stETH.balanceOf(lenderAAddress);
+
+  //     await check(stETHAfter, expectedStETHAfter, stETH, 0.01);
+  //     await checkScaledBal(astETH, lenderAAddress, '0');
+  //     await checkBal(astETH, lenderAAddress, '0');
+
+  //     await checkSupplyGt(astETH, '0');
+  //     const treasuryAmount = await astETH.balanceOf(treasuryAddress);
+  //     const astETHTotalSupply = await astETH.totalSupply();
+  //     await check(astETHTotalSupply, treasuryAmount, astETH, 0.01);
+
+  //     await checkBalGt(stETH, reserveData.aTokenAddress, '0');
+  //     await checkBalGt(stETH, borrowerAAddress, '0');
+  //     await checkBal(debtToken, borrowerAAddress, '0');
+  //     await checkBalGt(astETH, treasuryAddress, '0');
+  //   });
+  // });
+
+  describe('borrow and repay of DAI', function () {
+    it('AAVE math must be correct', async () => {
+      const { pool, dai, aDai, weth } = testEnv;
+
+      // lenders deposits DAI and borrow StETH
+      await dai.mint(await fxtPt(dai, '1000000000'));
+      await dai.transfer(lenderAAddress, await fxtPt(dai, '30000'));
+      await dai.transfer(lenderBAddress, await fxtPt(dai, '50000'));
+      await dai.transfer(borrowerAAddress, await fxtPt(dai, '10000'));
+      await dai.transfer(borrowerBAddress, await fxtPt(dai, '10000'));
+      await dai.connect(lenderA.signer).approve(pool.address, await fxtPt(dai, '30000000'));
+      await dai.connect(lenderB.signer).approve(pool.address, await fxtPt(dai, '50000000'));
+
+      const reserveData = await pool.getReserveData(dai.address);
+      const daiVDebtTokenAddress = reserveData.variableDebtTokenAddress;
+      const variableDebtToken = await getVariableDebtToken(daiVDebtTokenAddress);
+
+      const printBalances = async (title: string = '') => {
+        console.log(title);
+        await aDai.totalSupply().then((v) => console.log('aDai.totalSupply():', format(v)));
+        await aDai
+          .scaledTotalSupply()
+          .then((v) => console.log('aDai.scaledTotalSupply():', format(v)));
+        await dai
+          .balanceOf(aDai.address)
+          .then((v) => console.log('dai.balanceOf(aDai):', format(v)));
+        await aDai
+          .balanceOf(aDaiTreasuryAddress)
+          .then((v) => console.log('aDai.balanceOf(aDaiTreasuryAddress):', format(v)));
+        await aDai
+          .balanceOf(lenderAAddress)
+          .then((v) => console.log('aDai.balanceOf(lenderA)', format(v)));
+        await aDai
+          .balanceOf(lenderBAddress)
+          .then((v) => console.log('dai.balanceOf(lenderB)', format(v)));
+
+        await variableDebtToken
+          .totalSupply()
+          .then((v) => console.log('VDebtToken.totalSupply()', format(v)));
+        await variableDebtToken
+          .scaledTotalSupply()
+          .then((v) => console.log('VDebtToken.scaledTotalSupply()', format(v)));
+
+        await variableDebtToken
+          .balanceOf(borrowerAAddress)
+          .then((v) => console.log('VDebtToken.balanceOf(borrowerA)', format(v)));
+        await variableDebtToken
+          .balanceOf(borrowerBAddress)
+          .then((v) => console.log('VDebtToken.balanceOf(borrowerA)', format(v)));
+        console.log('Liquidity indices:');
+        await testEnv.pool
+          .getReserveNormalizedIncome(dai.address)
+          .then((v) => console.log('  Reserve normalized income', format(v, 1e27)));
+        await testEnv.pool
+          .getReserveNormalizedVariableDebt(dai.address)
+          .then((v) => console.log('  Reserve normalized variable debt', format(v, 1e27)));
+        console.log();
+      };
+
+      await pool
+        .connect(lenderA.signer)
+        .deposit(dai.address, await fxtPt(dai, '30000'), lenderAAddress, '0');
+
+      await printBalances();
+
+      await pool
+        .connect(lenderB.signer)
+        .deposit(dai.address, await fxtPt(dai, '50000'), lenderBAddress, '0');
+      await printBalances();
+
+      // borrowers depost steth to use as collateral
+      await weth.connect(borrowerA.signer).approve(pool.address, await fxtPt(weth, '100000'));
+      await pool
+        .connect(borrowerA.signer)
+        .deposit(weth.address, await fxtPt(weth, '10000'), borrowerAAddress, '0');
+      await weth.connect(borrowerB.signer).approve(pool.address, await fxtPt(weth, '100000'));
+      await pool
+        .connect(borrowerB.signer)
+        .deposit(weth.address, await fxtPt(weth, '15000'), borrowerBAddress, '0');
+
+      await pool
+        .connect(borrowerA.signer)
+        .borrow(dai.address, await fxtPt(dai, '10000'), RateMode.Variable, '0', borrowerAAddress);
+
+      await printBalances();
+
+      await pool
+        .connect(borrowerB.signer)
+        .borrow(dai.address, await fxtPt(dai, '15000'), RateMode.Variable, '0', borrowerBAddress);
+
+      await printBalances();
+
+      await advanceTimeAndBlock(1 * 3600 * 24 * 365);
+      await printBalances('One year later');
+
+      await dai.connect(borrowerA.signer).approve(pool.address, MAX_UINT_AMOUNT);
+      await pool
+        .connect(borrowerA.signer)
+        .repay(dai.address, MAX_UINT_AMOUNT, RateMode.Variable, borrowerAAddress);
+
+      await printBalances();
+
+      await dai.connect(borrowerB.signer).approve(pool.address, MAX_UINT_AMOUNT);
+      await pool
+        .connect(borrowerB.signer)
+        .repay(dai.address, MAX_UINT_AMOUNT, RateMode.Variable, borrowerBAddress);
+
+      await printBalances();
+
+      await pool.connect(lenderA.signer).withdraw(dai.address, MAX_UINT_AMOUNT, lenderAAddress);
+      await printBalances();
+
+      await pool.connect(lenderB.signer).withdraw(dai.address, MAX_UINT_AMOUNT, lenderBAddress);
+      await printBalances();
+    });
+  });
+
+  describe('multi user borrow repay', function () {
+    it('borrows without rebases', async () => {
+      const { pool, dai, stETH } = testEnv;
       await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '10000'));
       await pool
         .connect(lenderA.signer)
         .deposit(stETH.address, await fxtPt(stETH, '10000'), lenderAAddress, '0');
 
-      await printBalances();
+      await printBalances('Lender A Deposits stETH');
+
+      // borrowers deposits DAI and borrow StETH
+      await dai.mint(await fxtPt(dai, '1000000000'));
+      await dai.transfer(borrowerAAddress, await fxtPt(dai, '30000000'));
+      await dai.transfer(borrowerBAddress, await fxtPt(dai, '50000000'));
+      await dai.connect(borrowerA.signer).approve(pool.address, await fxtPt(dai, '30000000'));
+      await dai.connect(borrowerB.signer).approve(pool.address, await fxtPt(dai, '50000000'));
+
+      await pool
+        .connect(borrowerA.signer)
+        .deposit(dai.address, await fxtPt(dai, '30000000'), borrowerAAddress, '0');
+      await pool
+        .connect(borrowerB.signer)
+        .deposit(dai.address, await fxtPt(dai, '50000000'), borrowerBAddress, '0');
+
+      // borrowerA makes borrow
+      await pool
+        .connect(borrowerA.signer)
+        .borrow(
+          stETH.address,
+          await fxtPt(stETH, '1000'),
+          RateMode.Variable,
+          '0',
+          borrowerAAddress
+        );
+
+      await printBalances('Borrower A borrows 1000 stETH');
+
+      await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 1 year
+      await printBalances('1 year passed');
 
       await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '5000'));
       await pool
         .connect(lenderB.signer)
         .deposit(stETH.address, await fxtPt(stETH, '5000'), lenderBAddress, '0');
 
-      await printBalances();
+      await printBalances('Lender B deposits 5000 stETH');
 
-      await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '2500'));
+      await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 1 year
+      await printBalances('1 year passed');
+
+      await pool
+        .connect(borrowerB.signer)
+        .borrow(stETH.address, await fxtPt(stETH, '500'), RateMode.Variable, '0', borrowerBAddress);
+
+      await printBalances('Borrower B borrows 500 stETH');
+
+      await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 1 year
+      await printBalances('1 year later');
+
+      // borrower A repays
+      await stETH.connect(borrowerA.signer).approve(pool.address, MAX_UINT_AMOUNT);
+      await pool
+        .connect(borrowerA.signer)
+        .repay(stETH.address, MAX_UINT_AMOUNT, RateMode.Variable, borrowerAAddress);
+
+      await printBalances('Borrower A repays his debt');
+
+      await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '5000'));
       await pool
         .connect(lenderC.signer)
         .deposit(stETH.address, await fxtPt(stETH, '2500'), lenderCAddress, '0');
 
-      await printBalances();
+      await printBalances('Lender C deposits 2500 stETH');
+
+      await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 1 year
+      await printBalances('1 year later');
+
+      await pool.connect(lenderC.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderCAddress);
+      await printBalances('Lender C withdraws stETH');
+
+      await pool.connect(lenderA.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
+      await printBalances('Lender A withdraws stETH');
+
+      // borrower B repays
+      await stETH.connect(borrowerB.signer).approve(pool.address, MAX_UINT_AMOUNT);
+      await pool
+        .connect(borrowerB.signer)
+        .repay(stETH.address, MAX_UINT_AMOUNT, RateMode.Variable, borrowerBAddress);
+      await printBalances('Borrower B repays his debt');
+
+      await pool.connect(lenderB.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderBAddress);
+      await printBalances('Lender B withdraws stETH');
+    });
+
+    it('rebases without borrows', async () => {
+      const { pool, stETH } = testEnv;
+      await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '10000'));
+      await pool
+        .connect(lenderA.signer)
+        .deposit(stETH.address, await fxtPt(stETH, '10000'), lenderAAddress, '0');
+
+      await printBalances('Lender A Deposits stETH');
+
+      await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 1 year
+      await printBalances('1 year passed');
+
+      await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '5000'));
+      await pool
+        .connect(lenderB.signer)
+        .deposit(stETH.address, await fxtPt(stETH, '5000'), lenderBAddress, '0');
+
+      await printBalances('Lender B deposits 5000 stETH');
+
+      await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 1 year
+      await printBalances('1 year passed');
+
+      await rebase(stETH, 0.5);
+      await printBalances('rebase +50% happens');
+
+      await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 1 year
+      await printBalances('1 year passed');
+
+      await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '5000'));
+      await pool
+        .connect(lenderC.signer)
+        .deposit(stETH.address, await fxtPt(stETH, '2500'), lenderCAddress, '0');
+
+      await printBalances('Lender C deposits 2500 stETH');
+
+      await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 1 year
+      await printBalances('1 year later');
+
+      await rebase(stETH, -0.05);
+      await printBalances('rebase -5% happens');
+
+      await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 1 year
+      await printBalances('1 year later');
+
+      await pool.connect(lenderC.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
+      await printBalances('Lender C withdraws stETH');
+
+      await pool.connect(lenderA.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
+      await printBalances('Lender A withdraws stETH');
+
+      await pool.connect(lenderB.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderCAddress);
+      await printBalances('Lender B withdraws stETH');
+    });
+    it('should update accounting', async () => {
+      const { pool, dai, stETH } = testEnv;
+
+      // lender deposits StETH
+      await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '10000'));
+      await pool
+        .connect(lenderA.signer)
+        .deposit(stETH.address, await fxtPt(stETH, '10000'), lenderAAddress, '0');
+
+      await printBalances('Lender A Deposits stETH');
 
       // borrowers deposits DAI and borrow StETH
       await dai.mint(await fxtPt(dai, '1000000000'));
@@ -1815,23 +2003,38 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
 
       await pool
         .connect(borrowerA.signer)
-        .borrow(stETH.address, await fxtPt(stETH, '250'), RateMode.Variable, '0', borrowerAAddress);
+        .borrow(
+          stETH.address,
+          await fxtPt(stETH, '1000'),
+          RateMode.Variable,
+          '0',
+          borrowerAAddress
+        );
 
-      await printBalances();
+      await printBalances('Borrower A borrows 1000 stETH');
 
       await pool
         .connect(borrowerB.signer)
         .borrow(stETH.address, await fxtPt(stETH, '500'), RateMode.Variable, '0', borrowerBAddress);
 
-      await printBalances();
+      await printBalances('Borrower B borrows 500 stETH');
 
       // time passes and supply changes
       await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 1 year
       await printBalances('1 year later');
 
-      await rebase(stETH, 0.5); // +50% rebase
+      await stETH.connect(lenderB.signer).approve(pool.address, await fxtPt(stETH, '5000'));
+      await pool
+        .connect(lenderB.signer)
+        .deposit(stETH.address, await fxtPt(stETH, '5000'), lenderBAddress, '0');
 
-      await printBalances('+50% rebase');
+      await printBalances('Lender B deposits 5000 stETH');
+
+      await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 1 year
+      await printBalances('1 year later');
+
+      await rebase(stETH, 0.5); // +50% rebase
+      await printBalances('First rebase +50%');
 
       // borrower A repays
       await stETH.connect(borrowerA.signer).approve(pool.address, MAX_UINT_AMOUNT);
@@ -1839,27 +2042,45 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
         .connect(borrowerA.signer)
         .repay(stETH.address, MAX_UINT_AMOUNT, RateMode.Variable, borrowerAAddress);
 
-      await printBalances();
+      await printBalances('Borrower A repays his debt');
+
+      await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '5000'));
+      await pool
+        .connect(lenderC.signer)
+        .deposit(stETH.address, await fxtPt(stETH, '2500'), lenderCAddress, '0');
+
+      await printBalances('Lender C deposits 2500 stETH');
+
+      await rebase(stETH, 0.5); // +50% rebase
+      await printBalances('Second rebase +50%');
 
       // time passes and supply changes
       await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 1 year
+      await printBalances('1 year later');
+
       await rebase(stETH, -0.05); // -5% rebase
+      await printBalances('Third rebase -5%');
+
       // lenders pull out
       await pool.connect(lenderC.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
-      await printBalances('-5% rebase');
+      await printBalances('Lender C withdraws stETH');
+
       await pool.connect(lenderA.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
-      await printBalances();
+      await printBalances('Lender A withdraws stETH');
       // borrower B repays
       await stETH.connect(borrowerB.signer).approve(pool.address, MAX_UINT_AMOUNT);
       await pool
         .connect(borrowerB.signer)
         .repay(stETH.address, MAX_UINT_AMOUNT, RateMode.Variable, borrowerBAddress);
 
-      await printBalances();
+      await printBalances('Borrower B repays his debt');
 
       // time passes and supply changes
       await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 1 year
+      await printBalances('1 year later');
+
       await rebase(stETH, -0.1); // -10% rebase
+      await printBalances('Fourth rebase -10%');
 
       // await checkBal(astETH, lenderAAddress, '0');
       // await checkBalGt(astETH, lenderBAddress, '5000');
@@ -1867,19 +2088,14 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
       // await checkBal(debtToken, borrowerAAddress, '0');
       // await checkBal(debtToken, borrowerBAddress, '0');
 
-      const lenderBBalance = await astETH.balanceOf(lenderBAddress);
-      const treasuryAmount = await astETH.balanceOf(treasuryAddress);
-      const currentTotalSup = await astETH.totalSupply();
       // await check(currentTotalSup, lenderBBalance.add(treasuryAmount), astETH, 0.01);
 
-      const balanceOfAstETH = await stETH.balanceOf(reserveData.aTokenAddress);
       // await checkGt(currentTotalSup, balanceOfAstETH);
 
       // await checkBalGt(astETH, treasuryAddress, '0');
 
       await pool.connect(lenderB.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderCAddress);
-      await printBalances();
-      console.log('YAHOOO');
+      await printBalances('Lender B withdraws stETH');
     });
   });
 });

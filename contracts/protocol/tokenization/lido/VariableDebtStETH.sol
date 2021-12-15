@@ -41,6 +41,8 @@ contract VariableDebtStETH is DebtTokenBase, IVariableDebtToken {
   // stETH additions
   // Keeps track of the shares borrowed from the AAVE system
   int256 public _totalSharesBorrowed;
+  uint256 public _totalPrincipalBorrowed;
+  mapping(address => uint256) public _stEthBalances;
 
   // ---------------------------------------------------------------------------
 
@@ -91,8 +93,10 @@ contract VariableDebtStETH is DebtTokenBase, IVariableDebtToken {
     require(amountScaled != 0, Errors.CT_INVALID_MINT_AMOUNT);
 
     _mint(onBehalfOf, amountScaled);
+    _totalPrincipalBorrowed = _totalPrincipalBorrowed.add(amount);
+    _stEthBalances[user] = _stEthBalances[user].add(amount);
     _totalSharesBorrowed = _totalSharesBorrowed.add(
-      int256(ISTETH(UNDERLYING_ASSET_ADDRESS).getSharesByPooledEth(amountScaled))
+      int256(ISTETH(UNDERLYING_ASSET_ADDRESS).getSharesByPooledEth(amount))
     );
 
     emit Transfer(address(0), onBehalfOf, amount);
@@ -117,8 +121,17 @@ contract VariableDebtStETH is DebtTokenBase, IVariableDebtToken {
     require(amountScaled != 0, Errors.CT_INVALID_BURN_AMOUNT);
 
     _burn(user, amountScaled);
+    // uint256 amountScaledNormalizedIncome =
+    //   amount.rayDiv(POOL.getReserveNormalizedIncome(UNDERLYING_ASSET_ADDRESS));
+    if (_stEthBalances[user] >= amount) {
+      _totalPrincipalBorrowed = _totalPrincipalBorrowed.sub(amount);
+      _stEthBalances[user] = _stEthBalances[user].sub(amount);
+    } else {
+      _totalPrincipalBorrowed = _totalPrincipalBorrowed.sub(_stEthBalances[user]);
+      _stEthBalances[user] = 0;
+    }
     _totalSharesBorrowed = _totalSharesBorrowed.sub(
-      int256(ISTETH(UNDERLYING_ASSET_ADDRESS).getSharesByPooledEth(amountScaled))
+      int256(ISTETH(UNDERLYING_ASSET_ADDRESS).getSharesByPooledEth(amount))
     );
 
     emit Transfer(user, address(0), amount);
@@ -168,7 +181,7 @@ contract VariableDebtStETH is DebtTokenBase, IVariableDebtToken {
   // ---------------------------------------------------------------------------
   // Custom methods for stETH
   function getBorrowData() external view returns (uint256, int256) {
-    return (super.totalSupply(), _totalSharesBorrowed);
+    return (_totalPrincipalBorrowed, _totalSharesBorrowed);
   }
 
   function fetchStETHTotalSupply() internal view returns (uint256) {
