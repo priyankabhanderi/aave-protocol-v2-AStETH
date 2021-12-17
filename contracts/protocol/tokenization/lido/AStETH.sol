@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: agpl-3.0
 pragma solidity 0.6.12;
+pragma experimental ABIEncoderV2;
 
 import {IERC20} from '../../../dependencies/openzeppelin/contracts/IERC20.sol';
 import {SafeERC20} from '../../../dependencies/openzeppelin/contracts/SafeERC20.sol';
@@ -12,8 +13,25 @@ import {
 } from '../../libraries/aave-upgradeability/VersionedInitializable.sol';
 import {IncentivizedERC20} from '../IncentivizedERC20.sol';
 
+import {DataTypes} from '../../libraries/types/DataTypes.sol';
+import {SignedSafeMath} from '../../../dependencies/openzeppelin/contracts/SignedSafeMath.sol';
+import {UInt256Lib} from '../../../dependencies/uFragments/UInt256Lib.sol';
+
+interface IBookKeptBorrowing {
+  /**
+   * @dev get (total supply of borrowing, current amount of borrowed shares)
+   **/
+  function getBorrowData() external view returns (uint256, uint256);
+
+  function scaledTotalSupply() external view returns (uint256);
+
+  function totalSupply() external view returns (uint256);
+}
+
 interface ILido {
   function getPooledEthByShares(uint256 _sharesAmount) external view returns (uint256);
+
+  function getSharesByPooledEth(uint256 _pooledEthAmount) external view returns (uint256);
 }
 
 /**
@@ -24,6 +42,7 @@ interface ILido {
 contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
   using WadRayMath for uint256;
   using SafeERC20 for IERC20;
+  using UInt256Lib for uint256;
 
   bytes public constant EIP712_REVISION = bytes('1');
   bytes32 internal constant EIP712_DOMAIN =
@@ -36,6 +55,9 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
   address public immutable UNDERLYING_ASSET_ADDRESS;
   address public immutable RESERVE_TREASURY_ADDRESS;
   ILendingPool public immutable POOL;
+
+  IBookKeptBorrowing internal _variableDebtStETH;
+  uint256 public _totalSharesDeposited;
 
   /// @dev owner => next valid nonce to submit with permit()
   mapping(address => uint256) public _nonces;
@@ -91,6 +113,11 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
     _setDecimals(underlyingAssetDecimals);
   }
 
+  function initializeDebtToken() external {
+    DataTypes.ReserveData memory reserveData = POOL.getReserveData(UNDERLYING_ASSET_ADDRESS);
+    _variableDebtStETH = IBookKeptBorrowing(reserveData.variableDebtTokenAddress);
+  }
+
   /**
    * @dev Burns aTokens from `user` and sends the equivalent amount of underlying to `receiverOfUnderlying`
    * - Only callable by the LendingPool, as extra state updates there need to be managed
@@ -108,6 +135,9 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
     uint256 amountScaled = amount.rayDiv(_rebasingIndex()).rayDiv(index);
     require(amountScaled != 0, Errors.CT_INVALID_BURN_AMOUNT);
     _burn(user, amountScaled);
+    // _totalSharesDeposited = _totalSharesDeposited.sub(
+    //   ILido(UNDERLYING_ASSET_ADDRESS).getSharesByPooledEth(amount).toInt256Safe()
+    // );
 
     IERC20(UNDERLYING_ASSET_ADDRESS).safeTransfer(receiverOfUnderlying, amount);
 
@@ -133,6 +163,9 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
     uint256 amountScaled = amount.rayDiv(_rebasingIndex()).rayDiv(index);
     require(amountScaled != 0, Errors.CT_INVALID_MINT_AMOUNT);
     _mint(user, amountScaled);
+    _totalSharesDeposited = _totalSharesDeposited.add(
+      ILido(UNDERLYING_ASSET_ADDRESS).getSharesByPooledEth(amount)
+    );
 
     emit Transfer(address(0), user, amount);
     emit Mint(user, amount, index);
@@ -156,6 +189,9 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
     // In that case, the treasury will experience a (very small) loss, but it
     // wont cause potentially valid transactions to fail.
     _mint(RESERVE_TREASURY_ADDRESS, amount.rayDiv(_rebasingIndex()).rayDiv(index));
+    _totalSharesDeposited = _totalSharesDeposited.add(
+      ILido(UNDERLYING_ASSET_ADDRESS).getSharesByPooledEth(amount)
+    );
 
     emit Transfer(address(0), RESERVE_TREASURY_ADDRESS, amount);
     emit Mint(RESERVE_TREASURY_ADDRESS, amount, index);
@@ -351,8 +387,17 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
     _transfer(from, to, amount, true);
   }
 
-  function _rebasingIndex() internal view returns (uint256) {
-    return ILido(UNDERLYING_ASSET_ADDRESS).getPooledEthByShares(1e27);
+  function _rebasingIndex() public view returns (uint256) {
+    (uint256 totalStEthBorrowed, uint256 totalSharesBorrowed) = _variableDebtStETH.getBorrowData();
+    uint256 totalStEth =
+      ILido(UNDERLYING_ASSET_ADDRESS).getPooledEthByShares(_totalSharesDeposited);
+    uint256 lostStEth =
+      ILido(UNDERLYING_ASSET_ADDRESS).getPooledEthByShares(totalSharesBorrowed) -
+        totalStEthBorrowed;
+
+    uint256 lostRatio =
+      totalStEth == 0 ? 10**18 : uint256(10**18).mul(totalStEth - lostStEth).div(totalStEth);
+    return ILido(UNDERLYING_ASSET_ADDRESS).getPooledEthByShares(10**18).mul(lostRatio).div(10**18);
   }
 
   function _scaledBalanceOf(address user, uint256 rebasingIndex) internal view returns (uint256) {
