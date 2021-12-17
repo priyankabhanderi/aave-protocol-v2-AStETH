@@ -12,16 +12,10 @@ import {IERC20} from '../../../dependencies/openzeppelin/contracts/IERC20.sol';
 import {SafeMath} from '../../../dependencies/openzeppelin/contracts/SafeMath.sol';
 import {SignedSafeMath} from '../../../dependencies/openzeppelin/contracts/SignedSafeMath.sol';
 
-/*
-  stETH specific VariableDebtStETH implementation.
-  The VariableDebtStETH doesn't alter any logic but performs some additional book-keeping.
+interface ILido {
+  function getPooledEthByShares(uint256 _sharesAmount) external view returns (uint256);
+}
 
-  On mint and burn a private variable `_totalGonsBorrowed` keeps track of
-    the scaled stETH principal borrowed.
-
-  * fetchBorrowData() returns the total AMPL borrowed and the total scaled AMPL borrowed
-  * fetchTotalSupply() fetches AMPL's current supply
-*/
 contract VariableDebtStETH is DebtTokenBase, IVariableDebtToken {
   using WadRayMath for uint256;
   using SafeMath for uint256;
@@ -37,13 +31,6 @@ contract VariableDebtStETH is DebtTokenBase, IVariableDebtToken {
     address incentivesController
   ) public DebtTokenBase(pool, underlyingAsset, name, symbol, incentivesController) {}
 
-  // ---------------------------------------------------------------------------
-  // stETH additions
-  // Keeps track of the shares borrowed from the AAVE system
-  int256 private _totalSharesBorrowed;
-
-  // ---------------------------------------------------------------------------
-
   /**
    * @dev Gets the revision of the stable debt token implementation
    * @return The debt token implementation revision
@@ -57,7 +44,7 @@ contract VariableDebtStETH is DebtTokenBase, IVariableDebtToken {
    * @return The debt balance of the user
    **/
   function balanceOf(address user) public view virtual override returns (uint256) {
-    uint256 scaledBalance = super.balanceOf(user);
+    uint256 scaledBalance = scaledBalanceOf(user);
 
     if (scaledBalance == 0) {
       return 0;
@@ -87,13 +74,10 @@ contract VariableDebtStETH is DebtTokenBase, IVariableDebtToken {
     }
 
     uint256 previousBalance = super.balanceOf(onBehalfOf);
-    uint256 amountScaled = amount.rayDiv(index);
+    uint256 amountScaled = amount.rayDiv(_rebasingIndex()).rayDiv(index);
     require(amountScaled != 0, Errors.CT_INVALID_MINT_AMOUNT);
 
     _mint(onBehalfOf, amountScaled);
-    _totalSharesBorrowed = _totalSharesBorrowed.add(
-      int256(ISTETH(UNDERLYING_ASSET_ADDRESS).getSharesByPooledEth(amountScaled))
-    );
 
     emit Transfer(address(0), onBehalfOf, amount);
     emit Mint(user, onBehalfOf, amount, index);
@@ -113,13 +97,10 @@ contract VariableDebtStETH is DebtTokenBase, IVariableDebtToken {
     uint256 amount,
     uint256 index
   ) external override onlyLendingPool {
-    uint256 amountScaled = amount.rayDiv(index);
+    uint256 amountScaled = amount.rayDiv(_rebasingIndex()).rayDiv(index);
     require(amountScaled != 0, Errors.CT_INVALID_BURN_AMOUNT);
 
     _burn(user, amountScaled);
-    _totalSharesBorrowed = _totalSharesBorrowed.sub(
-      int256(ISTETH(UNDERLYING_ASSET_ADDRESS).getSharesByPooledEth(amountScaled))
-    );
 
     emit Transfer(user, address(0), amount);
     emit Burn(user, amount, index);
@@ -130,7 +111,7 @@ contract VariableDebtStETH is DebtTokenBase, IVariableDebtToken {
    * @return The debt balance of the user since the last burn/mint action
    **/
   function scaledBalanceOf(address user) public view virtual override returns (uint256) {
-    return super.balanceOf(user);
+    return _scaledBalanceOf(user);
   }
 
   /**
@@ -139,7 +120,7 @@ contract VariableDebtStETH is DebtTokenBase, IVariableDebtToken {
    **/
   function totalSupply() public view virtual override returns (uint256) {
     return
-      super.totalSupply().rayMul(POOL.getReserveNormalizedVariableDebt(UNDERLYING_ASSET_ADDRESS));
+      _scaledTotalSupply().rayMul(POOL.getReserveNormalizedVariableDebt(UNDERLYING_ASSET_ADDRESS));
   }
 
   /**
@@ -147,7 +128,7 @@ contract VariableDebtStETH is DebtTokenBase, IVariableDebtToken {
    * @return the scaled total supply
    **/
   function scaledTotalSupply() public view virtual override returns (uint256) {
-    return super.totalSupply();
+    return _scaledTotalSupply();
   }
 
   /**
@@ -162,16 +143,18 @@ contract VariableDebtStETH is DebtTokenBase, IVariableDebtToken {
     override
     returns (uint256, uint256)
   {
-    return (super.balanceOf(user), super.totalSupply());
+    return (_scaledBalanceOf(user), _scaledTotalSupply());
   }
 
-  // ---------------------------------------------------------------------------
-  // Custom methods for stETH
-  function getBorrowData() external view returns (uint256, int256) {
-    return (super.totalSupply(), _totalSharesBorrowed);
+  function _rebasingIndex() internal view returns (uint256) {
+    return ILido(UNDERLYING_ASSET_ADDRESS).getPooledEthByShares(1e27);
   }
 
-  function fetchStETHTotalSupply() internal view returns (uint256) {
-    return ISTETH(UNDERLYING_ASSET_ADDRESS).totalSupply();
+  function _scaledBalanceOf(address user) internal view returns (uint256) {
+    return super.balanceOf(user).rayMul(_rebasingIndex());
+  }
+
+  function _scaledTotalSupply() internal view returns (uint256) {
+    return super.totalSupply().rayMul(_rebasingIndex());
   }
 }
