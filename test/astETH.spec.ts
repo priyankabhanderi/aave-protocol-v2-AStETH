@@ -449,130 +449,130 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
       await printBalances('Lender B withdraws stETH');
       await assertDeposits(stETH, astETH, initialBalances, [lenderA, lenderB, lenderC], [0, 0, 0]);
     });
-    it('should update accounting', async () => {
-      const { pool, dai, stETH } = testEnv;
+    //   it('should update accounting', async () => {
+    //     const { pool, dai, stETH } = testEnv;
 
-      const reserveFactor = getReserveFactor();
-      console.log('Reserve Factor', reserveFactor);
+    //     const reserveFactor = getReserveFactor();
+    //     console.log('Reserve Factor', reserveFactor);
 
-      // lender A deposits
-      const lenderADeposit = 10000;
-      await deposit(pool, stETH, lenderA, lenderADeposit);
-      await assertBalance(stETH, lenderA, balances.stETH.lenderA - lenderADeposit);
-      await assertBalance(astETH, lenderA, lenderADeposit);
-      await assertTotalSupply(astETH, lenderADeposit);
-      await assertBalance(stETH, astETH, lenderADeposit);
+    //     // lender A deposits
+    //     const lenderADeposit = 10000;
+    //     await deposit(pool, stETH, lenderA, lenderADeposit);
+    //     await assertBalance(stETH, lenderA, balances.stETH.lenderA - lenderADeposit);
+    //     await assertBalance(astETH, lenderA, lenderADeposit);
+    //     await assertTotalSupply(astETH, lenderADeposit);
+    //     await assertBalance(stETH, astETH, lenderADeposit);
 
-      await printBalances('Lender A Deposits stETH');
+    //     await printBalances('Lender A Deposits stETH');
 
-      // borrowers deposits DAI and borrow StETH
-      await deposit(pool, dai, borrowerA, 30000000);
-      await deposit(pool, dai, borrowerB, 50000000);
+    //     // borrowers deposits DAI and borrow StETH
+    //     await deposit(pool, dai, borrowerA, 30000000);
+    //     await deposit(pool, dai, borrowerB, 50000000);
 
-      // borrower A borrows 1000 stETH
-      const borrowerABorrowAmount = 1000;
-      await borrow(pool, stETH, borrowerA, borrowerABorrowAmount);
-      await printBalances('Borrower A borrows 1000 stETH');
+    //     // borrower A borrows 1000 stETH
+    //     const borrowerABorrowAmount = 1000;
+    //     await borrow(pool, stETH, borrowerA, borrowerABorrowAmount);
+    //     await printBalances('Borrower A borrows 1000 stETH');
 
-      // await assertBalance(stETH, lenderA, balances.stETH.lenderA - lenderADeposit);
-      // await assertBalance(astETH, lenderA, lenderADeposit - borrowerABorrowAmount);
-      // await assertTotalSupply(astETH, lenderADeposit);
-      // await assertBalance(stETH, astETH, lenderADeposit);
-      // await assertBalance(stETH, borrowerA, borrowerABorrowAmount);
-      // await assertBalance(debtToken, borrowerA, borrowerABorrowAmount);
+    //     // await assertBalance(stETH, lenderA, balances.stETH.lenderA - lenderADeposit);
+    //     // await assertBalance(astETH, lenderA, lenderADeposit - borrowerABorrowAmount);
+    //     // await assertTotalSupply(astETH, lenderADeposit);
+    //     // await assertBalance(stETH, astETH, lenderADeposit);
+    //     // await assertBalance(stETH, borrowerA, borrowerABorrowAmount);
+    //     // await assertBalance(debtToken, borrowerA, borrowerABorrowAmount);
 
-      // borrower B borrows 1000 stETH
-      const borrowerBBorrowAmount = 500;
-      await borrow(pool, stETH, borrowerB, borrowerBBorrowAmount);
-      await printBalances('Borrower B borrows 500 stETH');
+    //     // borrower B borrows 1000 stETH
+    //     const borrowerBBorrowAmount = 500;
+    //     await borrow(pool, stETH, borrowerB, borrowerBBorrowAmount);
+    //     await printBalances('Borrower B borrows 500 stETH');
 
-      // await assertBalance(stETH, lenderA, balances.stETH.lenderA - lenderADeposit);
-      // await assertBalance(
-      //   astETH,
-      //   lenderA,
-      //   lenderADeposit - borrowerABorrowAmount - borrowerBBorrowAmount
-      // );
-      // await assertTotalSupply(astETH, lenderADeposit);
-      // await assertBalance(stETH, astETH, lenderADeposit);
-      // await assertBalance(stETH, borrowerB, borrowerBBorrowAmount);
-      // await assertBalance(debtToken, borrowerB, borrowerBBorrowAmount);
+    //     // await assertBalance(stETH, lenderA, balances.stETH.lenderA - lenderADeposit);
+    //     // await assertBalance(
+    //     //   astETH,
+    //     //   lenderA,
+    //     //   lenderADeposit - borrowerABorrowAmount - borrowerBBorrowAmount
+    //     // );
+    //     // await assertTotalSupply(astETH, lenderADeposit);
+    //     // await assertBalance(stETH, astETH, lenderADeposit);
+    //     // await assertBalance(stETH, borrowerB, borrowerBBorrowAmount);
+    //     // await assertBalance(debtToken, borrowerB, borrowerBBorrowAmount);
 
-      // time passes and supply changes
-      await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 1 year
-      await printBalances('1 year later');
+    //     // time passes and supply changes
+    //     await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 1 year
+    //     await printBalances('1 year later');
 
-      // lender B deposits 5000 stETH
-      const lenderBDeposit = 5000;
-      await deposit(pool, stETH, lenderB, lenderBDeposit);
-      await printBalances('Lender B deposits 5000 stETH');
+    //     // lender B deposits 5000 stETH
+    //     const lenderBDeposit = 5000;
+    //     await deposit(pool, stETH, lenderB, lenderBDeposit);
+    //     await printBalances('Lender B deposits 5000 stETH');
 
-      await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 1 year
-      await printBalances('1 year later');
+    //     await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 1 year
+    //     await printBalances('1 year later');
 
-      await rebase(stETH, 0.5); // +50% rebase
-      await printBalances('First rebase +50%');
+    //     await rebase(stETH, 0.5); // +50% rebase
+    //     await printBalances('First rebase +50%');
 
-      // borrower A repays
-      await stETH.connect(borrowerA.signer).approve(pool.address, MAX_UINT_AMOUNT);
-      await pool
-        .connect(borrowerA.signer)
-        .repay(stETH.address, MAX_UINT_AMOUNT, RateMode.Variable, borrowerAAddress);
+    //     // borrower A repays
+    //     await stETH.connect(borrowerA.signer).approve(pool.address, MAX_UINT_AMOUNT);
+    //     await pool
+    //       .connect(borrowerA.signer)
+    //       .repay(stETH.address, MAX_UINT_AMOUNT, RateMode.Variable, borrowerAAddress);
 
-      await printBalances('Borrower A repays his debt');
+    //     await printBalances('Borrower A repays his debt');
 
-      await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '5000'));
-      await pool
-        .connect(lenderC.signer)
-        .deposit(stETH.address, await fxtPt(stETH, '2500'), lenderCAddress, '0');
+    //     await stETH.connect(lenderC.signer).approve(pool.address, await fxtPt(stETH, '5000'));
+    //     await pool
+    //       .connect(lenderC.signer)
+    //       .deposit(stETH.address, await fxtPt(stETH, '2500'), lenderCAddress, '0');
 
-      await printBalances('Lender C deposits 2500 stETH');
+    //     await printBalances('Lender C deposits 2500 stETH');
 
-      await rebase(stETH, 0.5); // +50% rebase
-      await printBalances('Second rebase +50%');
+    //     await rebase(stETH, 0.5); // +50% rebase
+    //     await printBalances('Second rebase +50%');
 
-      // time passes and supply changes
-      await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 1 year
-      await printBalances('1 year later');
+    //     // time passes and supply changes
+    //     await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 1 year
+    //     await printBalances('1 year later');
 
-      await rebase(stETH, -0.05); // -5% rebase
-      await printBalances('Third rebase -5%');
+    //     await rebase(stETH, -0.05); // -5% rebase
+    //     await printBalances('Third rebase -5%');
 
-      // lenders pull out
-      await pool.connect(lenderC.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
-      await printBalances('Lender C withdraws stETH');
+    //     // lenders pull out
+    //     await pool.connect(lenderC.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
+    //     await printBalances('Lender C withdraws stETH');
 
-      await pool.connect(lenderA.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
-      await printBalances('Lender A withdraws stETH');
-      // borrower B repays
-      await stETH.connect(borrowerB.signer).approve(pool.address, MAX_UINT_AMOUNT);
-      await pool
-        .connect(borrowerB.signer)
-        .repay(stETH.address, MAX_UINT_AMOUNT, RateMode.Variable, borrowerBAddress);
+    //     await pool.connect(lenderA.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderAAddress);
+    //     await printBalances('Lender A withdraws stETH');
+    //     // borrower B repays
+    //     await stETH.connect(borrowerB.signer).approve(pool.address, MAX_UINT_AMOUNT);
+    //     await pool
+    //       .connect(borrowerB.signer)
+    //       .repay(stETH.address, MAX_UINT_AMOUNT, RateMode.Variable, borrowerBAddress);
 
-      await printBalances('Borrower B repays his debt');
+    //     await printBalances('Borrower B repays his debt');
 
-      // time passes and supply changes
-      await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 1 year
-      await printBalances('1 year later');
+    //     // time passes and supply changes
+    //     await advanceTimeAndBlock(1 * 3600 * 24 * 365); // 1 year
+    //     await printBalances('1 year later');
 
-      await rebase(stETH, -0.1); // -10% rebase
-      await printBalances('Fourth rebase -10%');
+    //     await rebase(stETH, -0.1); // -10% rebase
+    //     await printBalances('Fourth rebase -10%');
 
-      // await checkBal(astETH, lenderAAddress, '0');
-      // await checkBalGt(astETH, lenderBAddress, '5000');
-      // await checkBal(astETH, lenderCAddress, '0');
-      // await checkBal(debtToken, borrowerAAddress, '0');
-      // await checkBal(debtToken, borrowerBAddress, '0');
+    //     // await checkBal(astETH, lenderAAddress, '0');
+    //     // await checkBalGt(astETH, lenderBAddress, '5000');
+    //     // await checkBal(astETH, lenderCAddress, '0');
+    //     // await checkBal(debtToken, borrowerAAddress, '0');
+    //     // await checkBal(debtToken, borrowerBAddress, '0');
 
-      // await check(currentTotalSup, lenderBBalance.add(treasuryAmount), astETH, 0.01);
+    //     // await check(currentTotalSup, lenderBBalance.add(treasuryAmount), astETH, 0.01);
 
-      // await checkGt(currentTotalSup, balanceOfAstETH);
+    //     // await checkGt(currentTotalSup, balanceOfAstETH);
 
-      // await checkBalGt(astETH, treasuryAddress, '0');
+    //     // await checkBalGt(astETH, treasuryAddress, '0');
 
-      await pool.connect(lenderB.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderCAddress);
-      await printBalances('Lender B withdraws stETH');
-    });
+    //     await pool.connect(lenderB.signer).withdraw(stETH.address, MAX_UINT_AMOUNT, lenderCAddress);
+    //     await printBalances('Lender B withdraws stETH');
+    //   });
   });
 
   // describe('steth rebasing', () => {
