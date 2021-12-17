@@ -35,7 +35,29 @@ contract VariableDebtStETH is DebtTokenBase, IVariableDebtToken {
     string memory name,
     string memory symbol,
     address incentivesController
-  ) public VariableDebtToken(pool, underlyingAsset, name, symbol, incentivesController) {}
+  ) public DebtTokenBase(pool, underlyingAsset, name, symbol, incentivesController) {}
+
+  /**
+   * @dev Gets the revision of the stable debt token implementation
+   * @return The debt token implementation revision
+   **/
+  function getRevision() internal pure virtual override returns (uint256) {
+    return DEBT_TOKEN_REVISION;
+  }
+
+  /**
+   * @dev Calculates the accumulated debt balance of the user
+   * @return The debt balance of the user
+   **/
+  function balanceOf(address user) public view virtual override returns (uint256) {
+    uint256 scaledBalance = super.balanceOf(user);
+
+    if (scaledBalance == 0) {
+      return 0;
+    }
+
+    return scaledBalance.rayMul(POOL.getReserveNormalizedVariableDebt(UNDERLYING_ASSET_ADDRESS));
+  }
 
   function mint(
     address user,
