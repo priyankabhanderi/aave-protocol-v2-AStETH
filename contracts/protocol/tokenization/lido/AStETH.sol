@@ -7,9 +7,7 @@ import {ILendingPool} from '../../../interfaces/ILendingPool.sol';
 import {IAToken} from '../../../interfaces/IAToken.sol';
 import {WadRayMath} from '../../libraries/math/WadRayMath.sol';
 import {Errors} from '../../libraries/helpers/Errors.sol';
-import {
-  VersionedInitializable
-} from '../../libraries/aave-upgradeability/VersionedInitializable.sol';
+import {VersionedInitializable} from '../../libraries/aave-upgradeability/VersionedInitializable.sol';
 import {IncentivizedERC20} from '../IncentivizedERC20.sol';
 
 interface ILido {
@@ -42,7 +40,7 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
 
   bytes32 public DOMAIN_SEPARATOR;
 
-  modifier onlyLendingPool {
+  modifier onlyLendingPool() {
     require(_msgSender() == address(POOL), Errors.CT_CALLER_MUST_BE_LENDING_POOL);
     _;
   }
@@ -288,14 +286,13 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
     //solium-disable-next-line
     require(block.timestamp <= deadline, 'INVALID_EXPIRATION');
     uint256 currentValidNonce = _nonces[owner];
-    bytes32 digest =
-      keccak256(
-        abi.encodePacked(
-          '\x19\x01',
-          DOMAIN_SEPARATOR,
-          keccak256(abi.encode(PERMIT_TYPEHASH, owner, spender, value, currentValidNonce, deadline))
-        )
-      );
+    bytes32 digest = keccak256(
+      abi.encodePacked(
+        '\x19\x01',
+        DOMAIN_SEPARATOR,
+        keccak256(abi.encode(PERMIT_TYPEHASH, owner, spender, value, currentValidNonce, deadline))
+      )
+    );
     require(owner == ecrecover(digest, v, r, s), 'INVALID_SIGNATURE');
     _nonces[owner] = currentValidNonce.add(1);
     _approve(owner, spender, value);
@@ -318,8 +315,8 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
     uint256 index = POOL.getReserveNormalizedIncome(UNDERLYING_ASSET_ADDRESS);
 
     uint256 rebasingIndex = _rebasingIndex();
-    uint256 fromBalanceBefore = _scaledBalanceOf(from, rebasingIndex);
-    uint256 toBalanceBefore = _scaledBalanceOf(from, rebasingIndex);
+    uint256 fromBalanceBefore = _scaledBalanceOf(from, rebasingIndex).rayMul(index);
+    uint256 toBalanceBefore = _scaledBalanceOf(from, rebasingIndex).rayMul(index);
 
     super._transfer(from, to, amount.rayDiv(rebasingIndex).rayDiv(index));
 
