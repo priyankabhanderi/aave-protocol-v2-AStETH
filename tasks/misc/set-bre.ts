@@ -14,8 +14,10 @@ task(`set-DRE`, `Inits the DRE, to have access to all the plugins' objects`).set
       process.env.TENDERLY === 'true'
     ) {
       console.log('- Setting up Tenderly provider');
+      // @ts-ignore
       await _DRE.tenderlyRPC.initializeFork();
       console.log('- Initialized Tenderly fork');
+      // @ts-ignore
       const provider = new _DRE.ethers.providers.Web3Provider(_DRE.tenderlyRPC as any);
       _DRE.ethers.provider = provider;
     }
