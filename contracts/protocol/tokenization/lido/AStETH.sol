@@ -362,4 +362,12 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
   function _scaledTotalSupply(uint256 rebasingIndex) internal view returns (uint256) {
     return super.totalSupply().rayMul(rebasingIndex);
   }
+
+  function internalBalanceOf(address user) external view returns (uint256) {
+    return super.balanceOf(user);
+  }
+
+  function internalTotalSupply() external view returns (uint256) {
+    return super.totalSupply();
+  }
 }
