@@ -17,7 +17,7 @@ contract VariableDebtStETH is VariableDebtToken {
     address onBehalfOf,
     uint256 amount,
     uint256 rate
-  ) external virtual override onlyLendingPool returns (bool) {
+  ) external override onlyLendingPool returns (bool) {
     revert('CONTRACT_NOT_ACTIVE');
   }
 }
