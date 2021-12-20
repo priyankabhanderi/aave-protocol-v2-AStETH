@@ -624,31 +624,6 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
     });
   });
 
-  describe('Health factor', () => {
-    it('Drop the health factor below 1 with rebase', async () => {
-      const { INVALID_HF } = ProtocolErrors;
-      const { dai, users, pool, oracle, stETH } = testEnv;
-      const borrower = users[1];
-
-      const daiPrice = await oracle.getAssetPrice(dai.address);
-      let userGlobalData = await pool.getUserAccountData(borrower.address);
-      console.log(userGlobalData.healthFactor);
-      expect(userGlobalData.healthFactor.toString()).to.be.bignumber.gt(
-        oneEther.toString(),
-        INVALID_HF
-      );
-
-      await rebase(stETH, -0.5);
-
-      userGlobalData = await pool.getUserAccountData(borrower.address);
-      console.log(userGlobalData.healthFactor);
-      expect(userGlobalData.healthFactor.toString()).to.be.bignumber.lt(
-        oneEther.toString(),
-        INVALID_HF
-      );
-    });
-  });
-
   describe('Happy path', () => {
     it('lender A deposits 100 stETH', async () => {
       const { pool, stETH, deployer } = testEnv;
