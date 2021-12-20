@@ -7,7 +7,9 @@ import {ILendingPool} from '../../../interfaces/ILendingPool.sol';
 import {IAToken} from '../../../interfaces/IAToken.sol';
 import {WadRayMath} from '../../libraries/math/WadRayMath.sol';
 import {Errors} from '../../libraries/helpers/Errors.sol';
-import {VersionedInitializable} from '../../libraries/aave-upgradeability/VersionedInitializable.sol';
+import {
+  VersionedInitializable
+} from '../../libraries/aave-upgradeability/VersionedInitializable.sol';
 import {IncentivizedERC20} from '../IncentivizedERC20.sol';
 
 interface ILido {
@@ -103,7 +105,7 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
     uint256 amount,
     uint256 index
   ) external override onlyLendingPool {
-    uint256 amountScaled = amount.rayDiv(_rebasingIndex()).rayDiv(index);
+    uint256 amountScaled = amount.rayDiv(_stEthRebasingIndex()).rayDiv(index);
     require(amountScaled != 0, Errors.CT_INVALID_BURN_AMOUNT);
     _burn(user, amountScaled);
 
@@ -128,7 +130,7 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
   ) external override onlyLendingPool returns (bool) {
     uint256 previousBalance = super.balanceOf(user);
 
-    uint256 amountScaled = amount.rayDiv(_rebasingIndex()).rayDiv(index);
+    uint256 amountScaled = amount.rayDiv(_stEthRebasingIndex()).rayDiv(index);
     require(amountScaled != 0, Errors.CT_INVALID_MINT_AMOUNT);
     _mint(user, amountScaled);
 
@@ -153,7 +155,7 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
     // The amount to mint can easily be very small since it is a fraction of the interest ccrued.
     // In that case, the treasury will experience a (very small) loss, but it
     // wont cause potentially valid transactions to fail.
-    _mint(RESERVE_TREASURY_ADDRESS, amount.rayDiv(_rebasingIndex()).rayDiv(index));
+    _mint(RESERVE_TREASURY_ADDRESS, amount.rayDiv(_stEthRebasingIndex()).rayDiv(index));
 
     emit Transfer(address(0), RESERVE_TREASURY_ADDRESS, amount);
     emit Mint(RESERVE_TREASURY_ADDRESS, amount, index);
@@ -190,7 +192,7 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
     returns (uint256)
   {
     return
-      _scaledBalanceOf(user, _rebasingIndex()).rayMul(
+      _scaledBalanceOf(user, _stEthRebasingIndex()).rayMul(
         POOL.getReserveNormalizedIncome(UNDERLYING_ASSET_ADDRESS)
       );
   }
@@ -202,7 +204,7 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
    * @return The scaled balance of the user
    **/
   function scaledBalanceOf(address user) public view override returns (uint256) {
-    return _scaledBalanceOf(user, _rebasingIndex());
+    return _scaledBalanceOf(user, _stEthRebasingIndex());
   }
 
   /**
@@ -217,7 +219,7 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
     override
     returns (uint256, uint256)
   {
-    uint256 rebasingIndex = _rebasingIndex();
+    uint256 rebasingIndex = _stEthRebasingIndex();
     return (_scaledBalanceOf(user, rebasingIndex), _scaledTotalSupply(rebasingIndex));
   }
 
@@ -228,7 +230,7 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
    * @return the current total supply
    **/
   function totalSupply() public view override(IncentivizedERC20, IERC20) returns (uint256) {
-    uint256 currentSupplyScaled = _scaledTotalSupply(_rebasingIndex());
+    uint256 currentSupplyScaled = _scaledTotalSupply(_stEthRebasingIndex());
 
     if (currentSupplyScaled == 0) {
       return 0;
@@ -242,7 +244,7 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
    * @return the scaled total supply
    **/
   function scaledTotalSupply() public view virtual override returns (uint256) {
-    return _scaledTotalSupply(_rebasingIndex());
+    return _scaledTotalSupply(_stEthRebasingIndex());
   }
 
   /**
@@ -286,13 +288,14 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
     //solium-disable-next-line
     require(block.timestamp <= deadline, 'INVALID_EXPIRATION');
     uint256 currentValidNonce = _nonces[owner];
-    bytes32 digest = keccak256(
-      abi.encodePacked(
-        '\x19\x01',
-        DOMAIN_SEPARATOR,
-        keccak256(abi.encode(PERMIT_TYPEHASH, owner, spender, value, currentValidNonce, deadline))
-      )
-    );
+    bytes32 digest =
+      keccak256(
+        abi.encodePacked(
+          '\x19\x01',
+          DOMAIN_SEPARATOR,
+          keccak256(abi.encode(PERMIT_TYPEHASH, owner, spender, value, currentValidNonce, deadline))
+        )
+      );
     require(owner == ecrecover(digest, v, r, s), 'INVALID_SIGNATURE');
     _nonces[owner] = currentValidNonce.add(1);
     _approve(owner, spender, value);
@@ -314,7 +317,7 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
   ) internal {
     uint256 index = POOL.getReserveNormalizedIncome(UNDERLYING_ASSET_ADDRESS);
 
-    uint256 rebasingIndex = _rebasingIndex();
+    uint256 rebasingIndex = _stEthRebasingIndex();
     uint256 fromBalanceBefore = _scaledBalanceOf(from, rebasingIndex).rayMul(index);
     uint256 toBalanceBefore = _scaledBalanceOf(from, rebasingIndex).rayMul(index);
 
@@ -348,7 +351,14 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
     _transfer(from, to, amount, true);
   }
 
-  function _rebasingIndex() internal view returns (uint256) {
+  /**
+   * @return Current rebasin index of stETH in RAY
+   **/
+  function _stEthRebasingIndex() internal view returns (uint256) {
+    // Below expression returns how much Ether corresponds
+    // to 10 ** 27 shares. 10 ** 27 was taken  to provide
+    // same precision as AAVE's liquidity index, which
+    // counted in RAY's (decimals with 27 digits).
     return ILido(UNDERLYING_ASSET_ADDRESS).getPooledEthByShares(1e27);
   }
 
@@ -360,10 +370,22 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
     return super.totalSupply().rayMul(rebasingIndex);
   }
 
+  /**
+   * @dev Returns the internal balance of the user. The internal balance is the balance of
+   * the underlying asset of the user (sum of deposits of the user), divided by the current
+   * liquidity index at the moment of the update and by the current stETH rebasing index.
+   * @param user The user whose balance is calculated
+   * @return The internal balance of the user
+   **/
   function internalBalanceOf(address user) external view returns (uint256) {
     return super.balanceOf(user);
   }
 
+  /**
+   * @dev Returns the internal total supply of the token. Represents
+   * sum(debt/_stEthRebasingIndex/liquidityIndex).
+   * @return the internal total supply
+   */
   function internalTotalSupply() external view returns (uint256) {
     return super.totalSupply();
   }
