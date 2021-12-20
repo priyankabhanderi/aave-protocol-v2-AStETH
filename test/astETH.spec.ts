@@ -193,10 +193,8 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
   });
 
   describe('Transfer', () => {
-    const {
-      INVALID_FROM_BALANCE_AFTER_TRANSFER,
-      INVALID_TO_BALANCE_AFTER_TRANSFER,
-    } = ProtocolErrors;
+    const { INVALID_FROM_BALANCE_AFTER_TRANSFER, INVALID_TO_BALANCE_AFTER_TRANSFER } =
+      ProtocolErrors;
 
     it('lender A deposits 1 stETH, transfers to lender B', async () => {
       const { pool, stETH } = testEnv;
@@ -626,6 +624,31 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
     });
   });
 
+  describe('Health factor', () => {
+    it('Drop the health factor below 1 with rebase', async () => {
+      const { INVALID_HF } = ProtocolErrors;
+      const { dai, users, pool, oracle, stETH } = testEnv;
+      const borrower = users[1];
+
+      const daiPrice = await oracle.getAssetPrice(dai.address);
+      let userGlobalData = await pool.getUserAccountData(borrower.address);
+      console.log(userGlobalData.healthFactor);
+      expect(userGlobalData.healthFactor.toString()).to.be.bignumber.gt(
+        oneEther.toString(),
+        INVALID_HF
+      );
+
+      await rebase(stETH, 0.5);
+
+      userGlobalData = await pool.getUserAccountData(borrower.address);
+      console.log(userGlobalData.healthFactor);
+      expect(userGlobalData.healthFactor.toString()).to.be.bignumber.lt(
+        oneEther.toString(),
+        INVALID_HF
+      );
+    });
+  });
+
   describe('Happy path', () => {
     it('lender A deposits 100 stETH', async () => {
       const { pool, stETH, deployer } = testEnv;
@@ -654,7 +677,6 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
 
       await checkBal(astETH, lenderAAddress, '101');
       await checkBal(astETH, lenderBAddress, '50.5');
-
 
       await deposit(pool, stETH, lenderC, 50);
 
@@ -711,20 +733,18 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
       await pool
         .connect(lenderB.signer)
         .withdraw(stETH.address, await fxtPt(stETH, '51.33325'), lenderBAddress);
-      
+
       await checkBal(astETH, lenderAAddress, '0');
       await checkBal(astETH, lenderBAddress, '0');
       await checkBal(astETH, lenderCAddress, '104.325');
 
       await pool
-      .connect(lenderC.signer)
-      .withdraw(stETH.address, await fxtPt (stETH, '104.325'), lenderCAddress);
+        .connect(lenderC.signer)
+        .withdraw(stETH.address, await fxtPt(stETH, '104.325'), lenderCAddress);
 
       await checkBal(astETH, lenderAAddress, '0');
       await checkBal(astETH, lenderBAddress, '0');
       await checkBal(astETH, lenderCAddress, '0');
-
-
     });
   });
 });
