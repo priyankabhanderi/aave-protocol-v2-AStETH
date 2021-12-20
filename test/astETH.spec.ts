@@ -13,6 +13,7 @@ import { strategyStETH } from '../markets/aave/reservesConfigs';
 import { expect } from 'chai';
 import { _TypedDataEncoder } from 'ethers/lib/utils';
 import { MAX_UINT_AMOUNT } from '../helpers/constants';
+import { oneEther } from '../helpers/constants';
 
 const { parseEther } = ethers.utils;
 
@@ -24,8 +25,7 @@ let lenderA,
   lenderCAddress,
   evmSnapshotId,
   reserveData,
-  astETH: AStETH,
-  treasuryAddress;
+  astETH: AStETH;
 
 async function rebase(steth, perc) {
   const currentSupply = new BigNumber((await steth.totalSupply()).toString());
@@ -181,7 +181,6 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
 
     reserveData = await pool.getReserveData(stETH.address);
     astETH = await getAStETH(reserveData.aTokenAddress);
-    treasuryAddress = await astETH.RESERVE_TREASURY_ADDRESS();
 
     await stETH.connect(deployer.signer).mint(await fxtPt(stETH, '10000000000'));
     await stETH.connect(deployer.signer).transfer(lenderAAddress, await fxtPt(stETH, '100000'));
@@ -192,6 +191,7 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
   afterEach(async () => {
     await evmRevert(evmSnapshotId);
   });
+
   describe('Transfer', () => {
     const {
       INVALID_FROM_BALANCE_AFTER_TRANSFER,
@@ -199,7 +199,7 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
     } = ProtocolErrors;
 
     it('lender A deposits 1 stETH, transfers to lender B', async () => {
-      const { users, pool, stETH } = testEnv;
+      const { pool, stETH } = testEnv;
       await pool
         .connect(lenderA.signer)
         .deposit(stETH.address, ethers.utils.parseEther('1.0'), lenderAAddress, '0');
@@ -216,7 +216,7 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
       );
     });
     it('lender A deposits 1 stETH, positive rebase, lender A transfers to lender B 1 stETH', async () => {
-      const { users, pool, stETH } = testEnv;
+      const { pool, stETH } = testEnv;
       await pool
         .connect(lenderA.signer)
         .deposit(stETH.address, ethers.utils.parseEther('1.0'), lenderAAddress, '0');
@@ -484,7 +484,7 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
       });
     });
   });
-  describe('Withdraw', function () {
+  describe('Withdraw', () => {
     describe('single deposit partial withdraw', function () {
       it('should burn correct number of astETH tokens', async () => {
         const { pool, stETH } = testEnv;
@@ -623,6 +623,108 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
         deployer.address,
         (await stETH.getPooledEthByShares(stakedShares)).toString()
       );
+    });
+  });
+
+  describe('Happy path', () => {
+    it('lender A deposits 100 stETH', async () => {
+      const { pool, stETH, deployer } = testEnv;
+
+      await deposit(pool, stETH, lenderA, 100);
+
+      await checkBal(astETH, lenderAAddress, '100');
+      await checkBal(astETH, lenderBAddress, '0');
+
+      await advanceTimeAndBlock(3600 * 24 * 30); // 1 month
+
+      await checkBal(astETH, lenderAAddress, '100');
+      await checkBal(astETH, lenderBAddress, '0');
+
+      await deposit(pool, stETH, lenderB, 50);
+
+      await checkBal(astETH, lenderAAddress, '100');
+      await checkBal(astETH, lenderBAddress, '50');
+
+      await rebase(stETH, 0.01);
+
+      await checkBal(astETH, lenderAAddress, '101');
+      await checkBal(astETH, lenderBAddress, '50.5');
+
+      await advanceTimeAndBlock(3600 * 24 * 30); // 1 month
+
+      await checkBal(astETH, lenderAAddress, '101');
+      await checkBal(astETH, lenderBAddress, '50.5');
+
+
+      await deposit(pool, stETH, lenderC, 50);
+
+      await checkBal(astETH, lenderAAddress, '101');
+      await checkBal(astETH, lenderBAddress, '50.5');
+      await checkBal(astETH, lenderCAddress, '50');
+
+      await advanceTimeAndBlock(3600 * 24 * 30); // 1 month
+
+      await checkBal(astETH, lenderAAddress, '101');
+      await checkBal(astETH, lenderBAddress, '50.5');
+      await checkBal(astETH, lenderCAddress, '50');
+
+      await rebase(stETH, -0.05);
+
+      await checkBal(astETH, lenderAAddress, '95.95');
+      await checkBal(astETH, lenderBAddress, '47.975');
+      await checkBal(astETH, lenderCAddress, '47.5');
+
+      await astETH.connect(lenderA.signer).transfer(lenderCAddress, await fxtPt(stETH, '50'));
+
+      await checkBal(astETH, lenderAAddress, '45.95');
+      await checkBal(astETH, lenderBAddress, '47.975');
+      await checkBal(astETH, lenderCAddress, '97.5');
+
+      await pool
+        .connect(lenderA.signer)
+        .withdraw(stETH.address, await fxtPt(stETH, '30'), lenderAAddress);
+
+      await checkBal(astETH, lenderAAddress, '15.95');
+      await checkBal(astETH, lenderBAddress, '47.975');
+      await checkBal(astETH, lenderCAddress, '97.5');
+
+      await advanceTimeAndBlock(3600 * 24 * 30); // 1 month
+
+      await checkBal(astETH, lenderAAddress, '15.95');
+      await checkBal(astETH, lenderBAddress, '47.975');
+      await checkBal(astETH, lenderCAddress, '97.5');
+
+      await pool
+        .connect(lenderA.signer)
+        .withdraw(stETH.address, await fxtPt(stETH, '15.95'), lenderAAddress);
+
+      await checkBal(astETH, lenderAAddress, '0');
+      await checkBal(astETH, lenderBAddress, '47.975');
+      await checkBal(astETH, lenderCAddress, '97.5');
+
+      await rebase(stETH, 0.07);
+
+      await checkBal(astETH, lenderAAddress, '0');
+      await checkBal(astETH, lenderBAddress, '51.33325');
+      await checkBal(astETH, lenderCAddress, '104.325');
+
+      await pool
+        .connect(lenderB.signer)
+        .withdraw(stETH.address, await fxtPt(stETH, '51.33325'), lenderBAddress);
+      
+      await checkBal(astETH, lenderAAddress, '0');
+      await checkBal(astETH, lenderBAddress, '0');
+      await checkBal(astETH, lenderCAddress, '104.325');
+
+      await pool
+      .connect(lenderC.signer)
+      .withdraw(stETH.address, await fxtPt (stETH, '104.325'), lenderCAddress);
+
+      await checkBal(astETH, lenderAAddress, '0');
+      await checkBal(astETH, lenderBAddress, '0');
+      await checkBal(astETH, lenderCAddress, '0');
+
+
     });
   });
 });

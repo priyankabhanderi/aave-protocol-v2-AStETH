@@ -30,13 +30,7 @@ makeSuite('LendingPool liquidation - liquidator receiving aToken', (testEnv) => 
     treasuryAddress = await astETH.RESERVE_TREASURY_ADDRESS();
   });
 
-  const {
-    LPCM_HEALTH_FACTOR_NOT_BELOW_THRESHOLD,
-    INVALID_HF,
-    LPCM_SPECIFIED_CURRENCY_NOT_BORROWED_BY_USER,
-    LPCM_COLLATERAL_CANNOT_BE_LIQUIDATED,
-    LP_IS_PAUSED,
-  } = ProtocolErrors;
+  const { LPCM_HEALTH_FACTOR_NOT_BELOW_THRESHOLD, INVALID_HF } = ProtocolErrors;
 
   it('Deposits stETH, borrows DAI/Check liquidation fails because health factor is above 1', async () => {
     const { dai, stETH, users, pool, oracle } = testEnv;
