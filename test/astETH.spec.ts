@@ -722,4 +722,48 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
       await checkBal(astETH, lenderCAddress, '0');
     });
   });
+  describe('Borrow', () => {
+    it('disabled variable borrowing', async () => {
+      const { dai, stETH, users, pool, oracle } = testEnv;
+      const depositor = users[0];
+
+      await dai
+        .connect(depositor.signer)
+        .mint(await convertToCurrencyDecimals(dai.address, '1000000'));
+      await dai.connect(depositor.signer).approve(pool.address, await fxtPt(stETH, '1000000'));
+      const amountDAItoDeposit = await convertToCurrencyDecimals(dai.address, '1000000');
+      await pool
+        .connect(depositor.signer)
+        .deposit(dai.address, amountDAItoDeposit, depositor.address, '0');
+
+      await deposit(pool, stETH, lenderA, 100);
+
+      await expect(
+        pool
+          .connect(depositor.signer)
+          .borrow(stETH.address, 1, RateMode.Variable, '0', depositor.address)
+      ).to.be.revertedWith('CONTRACT_NOT_ACTIVE');
+    });
+    it('disabled stable borrowing', async () => {
+      const { dai, stETH, users, pool, oracle } = testEnv;
+      const depositor = users[0];
+
+      await dai
+        .connect(depositor.signer)
+        .mint(await convertToCurrencyDecimals(dai.address, '1000000'));
+      await dai.connect(depositor.signer).approve(pool.address, await fxtPt(stETH, '1000000'));
+      const amountDAItoDeposit = await convertToCurrencyDecimals(dai.address, '1000000');
+      await pool
+        .connect(depositor.signer)
+        .deposit(dai.address, amountDAItoDeposit, depositor.address, '0');
+
+      await deposit(pool, stETH, lenderA, 100);
+
+      await expect(
+        pool
+          .connect(depositor.signer)
+          .borrow(stETH.address, 1, RateMode.Stable, '0', depositor.address)
+      ).to.be.revertedWith('12');
+    });
+  });
 });
