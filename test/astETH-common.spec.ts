@@ -171,9 +171,9 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
 
       const chainId = DRE.network.config.chainId || BUIDLEREVM_CHAINID;
       const deadline = MAX_UINT_AMOUNT;
-      let nonce = (await astETH._nonces(owner.address)).toNumber();
-      let permitAmount = parseEther('2').toString();
-      let msgParams = buildPermitParams(
+      const nonce = (await astETH._nonces(owner.address)).toNumber();
+      const permitAmount = '0';
+      const msgParams = buildPermitParams(
         chainId,
         astETH.address,
         '1',
@@ -193,35 +193,10 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
       const { v, r, s } = getSignatureFromTypedData(ownerPrivateKey, msgParams);
 
       expect((await astETH.allowance(owner.address, spender.address)).toString()).to.be.equal(
-        parseEther('2'),
+        ethers.utils.parseEther('2'),
         'INVALID_ALLOWANCE_BEFORE_PERMIT'
       );
-
-      nonce = (await astETH._nonces(owner.address)).toNumber();
-      permitAmount = parseEther('0').toString();
-      msgParams = buildPermitParams(
-        chainId,
-        astETH.address,
-        '1',
-        await astETH.name(),
-        owner.address,
-        spender.address,
-        nonce,
-        deadline,
-        permitAmount
-      );
-
-      await waitForTx(
-        await astETH
-          .connect(spender.signer)
-          .permit(owner.address, spender.address, permitAmount, deadline, v, r, s)
-      );
-      expect((await astETH.allowance(owner.address, spender.address)).toString()).to.be.equal(
-        permitAmount,
-        'INVALID_ALLOWANCE_AFTER_PERMIT'
-      );
-
-      expect((await astETH._nonces(owner.address)).toNumber()).to.be.equal(2);
+      expect((await astETH._nonces(owner.address)).toNumber()).to.be.equal(1);
     });
 
     it('Tries to submit a permit with invalid nonce', async () => {

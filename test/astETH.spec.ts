@@ -638,7 +638,7 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
         INVALID_HF
       );
 
-      await rebase(stETH, 0.5);
+      await rebase(stETH, -0.5);
 
       userGlobalData = await pool.getUserAccountData(borrower.address);
       console.log(userGlobalData.healthFactor);
