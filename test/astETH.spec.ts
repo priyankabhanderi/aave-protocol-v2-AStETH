@@ -1,5 +1,6 @@
 import BigNumber from 'bignumber.js';
 
+import './__setup.spec';
 import { TestEnv, makeSuite, SignerWithAddress } from './helpers/make-suite';
 import { convertToCurrencyDecimals } from '../helpers/contracts-helpers';
 import { ethers } from 'ethers';
@@ -192,8 +193,10 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
     await evmRevert(evmSnapshotId);
   });
   describe('Transfer', () => {
-    const { INVALID_FROM_BALANCE_AFTER_TRANSFER, INVALID_TO_BALANCE_AFTER_TRANSFER } =
-      ProtocolErrors;
+    const {
+      INVALID_FROM_BALANCE_AFTER_TRANSFER,
+      INVALID_TO_BALANCE_AFTER_TRANSFER,
+    } = ProtocolErrors;
 
     it('lender A deposits 1 stETH, transfers to lender B', async () => {
       const { users, pool, stETH } = testEnv;
