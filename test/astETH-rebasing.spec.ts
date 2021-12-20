@@ -193,8 +193,10 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
   });
 
   describe('Transfer', () => {
-    const { INVALID_FROM_BALANCE_AFTER_TRANSFER, INVALID_TO_BALANCE_AFTER_TRANSFER } =
-      ProtocolErrors;
+    const {
+      INVALID_FROM_BALANCE_AFTER_TRANSFER,
+      INVALID_TO_BALANCE_AFTER_TRANSFER,
+    } = ProtocolErrors;
 
     it('lender A deposits 1 stETH, transfers to lender B', async () => {
       const { pool, stETH } = testEnv;
