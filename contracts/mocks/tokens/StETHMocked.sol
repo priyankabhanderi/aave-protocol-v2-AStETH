@@ -45,7 +45,7 @@ contract StETHMocked {
     return _totalShares;
   }
 
-  function mint(address _to, uint256 amount) external returns (uint256) {
+  function _mint(address _to, uint256 amount) internal returns (uint256) {
     uint256 newTotalSupply = _totalSupply.add(amount);
     if (_totalSupply != 0) {
       amount = _getSharesByPooledEth(amount);
@@ -53,6 +53,11 @@ contract StETHMocked {
     _totalSupply = newTotalSupply;
 
     return _mintShares(_to, amount);
+  }
+
+  function mint(uint256 value) external returns (bool) {
+    _mint(msg.sender, value);
+    return true;
   }
 
   function rebase(int256 addingAmount) external returns (uint256) {

@@ -1,38 +1,34 @@
 import BigNumber from 'bignumber.js';
 
-import { TestEnv, makeSuite, SignerWithAddress } from './helpers/make-suite';
-import { MAX_UINT_AMOUNT, ZERO_ADDRESS, APPROVAL_AMOUNT_LENDING_POOL } from '../helpers/constants';
-import {
-  convertToCurrencyDecimals,
-  buildPermitParams,
-  getSignatureFromTypedData,
-} from '../helpers/contracts-helpers';
+import { TestEnv, makeSuite } from './helpers/make-suite';
+import { MAX_UINT_AMOUNT, ZERO_ADDRESS } from '../helpers/constants';
+import { buildPermitParams, getSignatureFromTypedData } from '../helpers/contracts-helpers';
 import { ethers } from 'ethers';
-import { RateMode } from '../helpers/types';
 import { AStETH } from '../types/AStETH';
 import { getAStETH } from '../helpers/contracts-getters';
-import { evmSnapshot, evmRevert } from '../helpers/misc-utils';
-import { LendingPool, StETHMocked } from '../types';
-import { strategyStETH } from '../markets/aave/reservesConfigs';
 import { expect } from 'chai';
 import { ProtocolErrors } from '../helpers/types';
 import { BUIDLEREVM_CHAINID } from '../helpers/buidler-constants';
 import { DRE } from '../helpers/misc-utils';
-import { waitForTx, advanceTimeAndBlock } from '../helpers/misc-utils';
+import { waitForTx, evmSnapshot, evmRevert } from '../helpers/misc-utils';
 import { _TypedDataEncoder } from 'ethers/lib/utils';
-import { CommonsConfig } from '../markets/aave/commons';
 
 const { parseEther } = ethers.utils;
-const AAVE_REFERRAL = CommonsConfig.ProtocolGlobalParams.AaveReferral;
 
-let reserveData, astETH: AStETH;
+let reserveData, astETH: AStETH, evmSnapshotId;
 
 makeSuite('StETH aToken', (testEnv: TestEnv) => {
   before(async () => {
+    evmSnapshotId = await evmSnapshot();
     const { stETH, pool } = testEnv;
     reserveData = await pool.getReserveData(stETH.address);
     astETH = await getAStETH(reserveData.aTokenAddress);
   });
+
+  after(async () => {
+    await evmRevert(evmSnapshotId);
+  });
+
   describe('Modifiers', () => {
     const { CT_CALLER_MUST_BE_LENDING_POOL } = ProtocolErrors;
 
@@ -175,9 +171,9 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
 
       const chainId = DRE.network.config.chainId || BUIDLEREVM_CHAINID;
       const deadline = MAX_UINT_AMOUNT;
-      const nonce = (await astETH._nonces(owner.address)).toNumber();
-      const permitAmount = '0';
-      const msgParams = buildPermitParams(
+      let nonce = (await astETH._nonces(owner.address)).toNumber();
+      let permitAmount = parseEther('2').toString();
+      let msgParams = buildPermitParams(
         chainId,
         astETH.address,
         '1',
@@ -199,6 +195,20 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
       expect((await astETH.allowance(owner.address, spender.address)).toString()).to.be.equal(
         parseEther('2'),
         'INVALID_ALLOWANCE_BEFORE_PERMIT'
+      );
+
+      nonce = (await astETH._nonces(owner.address)).toNumber();
+      permitAmount = parseEther('0').toString();
+      msgParams = buildPermitParams(
+        chainId,
+        astETH.address,
+        '1',
+        await astETH.name(),
+        owner.address,
+        spender.address,
+        nonce,
+        deadline,
+        permitAmount
       );
 
       await waitForTx(

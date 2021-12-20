@@ -1,29 +1,19 @@
 import BigNumber from 'bignumber.js';
 
 import { TestEnv, makeSuite, SignerWithAddress } from './helpers/make-suite';
-import { MAX_UINT_AMOUNT, ZERO_ADDRESS, APPROVAL_AMOUNT_LENDING_POOL } from '../helpers/constants';
-import {
-  convertToCurrencyDecimals,
-  buildPermitParams,
-  getSignatureFromTypedData,
-} from '../helpers/contracts-helpers';
+import { convertToCurrencyDecimals } from '../helpers/contracts-helpers';
 import { ethers } from 'ethers';
-import { RateMode } from '../helpers/types';
+import { ProtocolErrors, RateMode } from '../helpers/types';
 import { AStETH } from '../types/AStETH';
 import { getAStETH } from '../helpers/contracts-getters';
-import { evmSnapshot, evmRevert } from '../helpers/misc-utils';
+import { evmSnapshot, evmRevert, advanceTimeAndBlock } from '../helpers/misc-utils';
 import { LendingPool, StETHMocked } from '../types';
 import { strategyStETH } from '../markets/aave/reservesConfigs';
 import { expect } from 'chai';
-import { ProtocolErrors } from '../helpers/types';
-import { BUIDLEREVM_CHAINID } from '../helpers/buidler-constants';
-import { DRE } from '../helpers/misc-utils';
-import { waitForTx, advanceTimeAndBlock } from '../helpers/misc-utils';
 import { _TypedDataEncoder } from 'ethers/lib/utils';
-import { CommonsConfig } from '../markets/aave/commons';
+import { MAX_UINT_AMOUNT } from '../helpers/constants';
 
 const { parseEther } = ethers.utils;
-const AAVE_REFERRAL = CommonsConfig.ProtocolGlobalParams.AaveReferral;
 
 let lenderA,
   lenderB,
@@ -192,7 +182,7 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
     astETH = await getAStETH(reserveData.aTokenAddress);
     treasuryAddress = await astETH.RESERVE_TREASURY_ADDRESS();
 
-    await stETH.connect(deployer.signer).mint(deployer.address, await fxtPt(stETH, '1000000000'));
+    await stETH.connect(deployer.signer).mint(await fxtPt(stETH, '10000000000'));
     await stETH.connect(deployer.signer).transfer(lenderAAddress, await fxtPt(stETH, '100000'));
     await stETH.connect(deployer.signer).transfer(lenderBAddress, await fxtPt(stETH, '100000'));
     await stETH.connect(deployer.signer).transfer(lenderCAddress, await fxtPt(stETH, '100000'));
@@ -202,11 +192,8 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
     await evmRevert(evmSnapshotId);
   });
   describe('Transfer', () => {
-    const {
-      INVALID_FROM_BALANCE_AFTER_TRANSFER,
-      INVALID_TO_BALANCE_AFTER_TRANSFER,
-      VL_TRANSFER_NOT_ALLOWED,
-    } = ProtocolErrors;
+    const { INVALID_FROM_BALANCE_AFTER_TRANSFER, INVALID_TO_BALANCE_AFTER_TRANSFER } =
+      ProtocolErrors;
 
     it('lender A deposits 1 stETH, transfers to lender B', async () => {
       const { users, pool, stETH } = testEnv;
@@ -265,6 +252,20 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
         (0.5 * 10 ** 18).toString(),
         INVALID_TO_BALANCE_AFTER_TRANSFER
       );
+    });
+    describe('when lenderA deposits 1000 StETH, transfers more than he has', function () {
+      it('should update balances correctly', async () => {
+        const { pool, stETH } = testEnv;
+
+        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000'));
+        await pool
+          .connect(lenderA.signer)
+          .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
+
+        await expect(
+          astETH.connect(lenderA.signer).transfer(lenderAAddress, await fxtPt(stETH, '1001'))
+        ).to.be.revertedWith('transfer amount exceeds balance');
+      });
     });
   });
   describe('Deposit', () => {
@@ -480,22 +481,6 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
       });
     });
   });
-  describe('Transfer', () => {
-    describe('when lenderA deposits 1000 StETH, transfers more than he has', function () {
-      it('should update balances correctly', async () => {
-        const { pool, stETH } = testEnv;
-
-        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000'));
-        await pool
-          .connect(lenderA.signer)
-          .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
-
-        await expect(
-          astETH.connect(lenderA.signer).transfer(lenderAAddress, await fxtPt(stETH, '1001'))
-        ).to.be.revertedWith('transfer amount exceeds balance');
-      });
-    });
-  });
   describe('Withdraw', function () {
     describe('single deposit partial withdraw', function () {
       it('should burn correct number of astETH tokens', async () => {
@@ -519,6 +504,35 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
         await checkBal(astETH, lenderAAddress, '900');
         await checkBal(stETH, reserveData.aTokenAddress, '900');
         await checkSupply(astETH, '900');
+      });
+      it('should burn correct number of astETH tokens after rebase', async () => {
+        const { pool, stETH } = testEnv;
+
+        await stETH.connect(lenderA.signer).approve(pool.address, await fxtPt(stETH, '1000'));
+        await pool
+          .connect(lenderA.signer)
+          .deposit(stETH.address, await fxtPt(stETH, '1000'), lenderAAddress, '0');
+
+        await checkBal(stETH, lenderAAddress, '99000');
+        await checkBal(astETH, lenderAAddress, '1000');
+        await checkBal(stETH, reserveData.aTokenAddress, '1000');
+        await checkSupply(astETH, '1000');
+
+        await rebase(stETH, 1);
+
+        await checkBal(stETH, lenderAAddress, '198000');
+        await checkBal(astETH, lenderAAddress, '2000');
+        await checkBal(stETH, reserveData.aTokenAddress, '2000');
+        await checkSupply(astETH, '2000');
+
+        await pool
+          .connect(lenderA.signer)
+          .withdraw(stETH.address, await fxtPt(stETH, '100'), lenderAAddress);
+
+        await checkBal(stETH, lenderAAddress, '198100');
+        await checkBal(astETH, lenderAAddress, '1900');
+        await checkBal(stETH, reserveData.aTokenAddress, '1900');
+        await checkSupply(astETH, '1900');
       });
     });
 
@@ -587,6 +601,25 @@ makeSuite('StETH aToken', (testEnv: TestEnv) => {
         await checkBal(stETH, reserveData.aTokenAddress, '0');
         await checkSupply(astETH, '0');
       });
+    });
+  });
+  describe('Precision', () => {
+    it('rebase index precision with big steth amount', async () => {
+      const { pool, stETH, deployer } = testEnv;
+      const depositAmount = '99999999';
+      const stakedShares = await stETH.getSharesByPooledEth(depositAmount);
+      await stETH.connect(deployer.signer).approve(pool.address, await fxtPt(stETH, depositAmount));
+      await pool
+        .connect(deployer.signer)
+        .deposit(stETH.address, await fxtPt(stETH, depositAmount), deployer.address, '0');
+
+      await checkBal(astETH, deployer.address, depositAmount, 0.000001);
+      await stETH.connect(deployer.signer).rebase(7);
+      await checkBal(
+        astETH,
+        deployer.address,
+        (await stETH.getPooledEthByShares(stakedShares)).toString()
+      );
     });
   });
 });
