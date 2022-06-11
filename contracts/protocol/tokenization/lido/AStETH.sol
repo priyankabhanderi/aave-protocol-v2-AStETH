@@ -403,3 +403,6 @@ contract AStETH is VersionedInitializable, IncentivizedERC20, IAToken {
     return amount.mul(WadRayMath.RAY).div(stEthRebasingIndex).rayDiv(aaveLiquidityIndex);
   }
 }
+
+// 9e74d1b791e07e48775ea264cf55347dca49f1c052
+// 3077b58d5d37839198000000

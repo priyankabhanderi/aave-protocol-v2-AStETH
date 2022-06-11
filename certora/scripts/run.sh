@@ -40,6 +40,7 @@ certoraRun certora/harness/AStETHHarness.sol certora/harness/IncentivesControlle
            --link AStETHHarness:UNDERLYING_ASSET_ADDRESS=DummyERC20A AStETHHarness:POOL=SymbolicLendingPool AStETHHarness:_incentivesController=IncentivesControllerMock AStETHHarness:RESERVE_TREASURY_ADDRESS=DummyERC20B \
            --solc solc6.12 \
            --optimistic_loop \
+           --settings -smt_nonLinearArithmetic=true \
            --cloud \
-           --msg "AStETH rule sanity" \
-           --rule integrityOfMint
+           --rule integrityOfMint \
+           --msg "AStETH rule sanity"

@@ -2,7 +2,7 @@ using SymbolicLendingPool as LENDING_POOL
 
 methods {
     // Summerizations:
-    getPooledEthByShares(uint256 _sharesAmount) returns (uint256) => NONDET
+    // getPooledEthByShares(uint256 _sharesAmount) returns (uint256) => NONDET
 
     balanceOf(address) returns (uint256) envfree
     scaledBalanceOf(address) returns (uint256) envfree
