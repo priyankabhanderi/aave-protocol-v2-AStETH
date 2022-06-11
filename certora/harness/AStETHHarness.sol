@@ -14,8 +14,4 @@ contract AStETHHarness is AStETH {
     string memory tokenSymbol,
     address incentivesController
   ) public AStETH(pool, underlyingAssetAddress, reserveTreasuryAddress, tokenName, tokenSymbol, incentivesController) {}
-
-  function getRay() public returns (uint256) {
-      WadRayMath.RAY;
-  }
 }
