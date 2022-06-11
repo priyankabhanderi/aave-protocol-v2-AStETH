@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity 0.6.12;
 
-import {AStETH} from "../../../contracts/protocol/tokenization/lido/AStETH.sol";
-import {ILendingPool} from '../../../contracts/interfaces/ILendingPool.sol';
-import {WadRayMath} from '../../../contracts/protocol/libraries/math/WadRayMath.sol';
+import {AStETH} from "../../contracts/protocol/tokenization/lido/AStETH.sol";
+import {ILendingPool} from "../../contracts/interfaces/ILendingPool.sol";
+import {WadRayMath} from "../../contracts/protocol/libraries/math/WadRayMath.sol";
 
 contract AStETHHarness is AStETH {
   constructor(

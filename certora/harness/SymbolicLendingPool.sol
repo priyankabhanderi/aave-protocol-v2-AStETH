@@ -3,9 +3,8 @@
 pragma solidity 0.6.12;
 pragma experimental ABIEncoderV2;
 
-// import {SafeMath} from '../../contracts/dependencies/openzeppelin/contracts/SafeMath.sol';
-import {SafeERC20} from '../../../contracts/dependencies/openzeppelin/contracts/SafeERC20.sol';
-import "../../../contracts/interfaces/IAToken.sol";
+import {SafeERC20} from '../../contracts/dependencies/openzeppelin/contracts/SafeERC20.sol';
+import "../../contracts/interfaces/IAToken.sol";
 contract SymbolicLendingPool  {
 
     using SafeERC20 for IERC20;

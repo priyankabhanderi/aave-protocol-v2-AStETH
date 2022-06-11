@@ -1,46 +1,37 @@
-// SPDX-License-Identifier: agpl-3.0
-pragma solidity ^0.8.0;
+pragma solidity 0.6.12;
 
-// with mint
-contract DummyERC20Impl {
-    uint256 t;
-    mapping (address => uint256) b;
-    mapping (address => mapping (address => uint256)) a;
+import "./IERC20.sol";
+import "../../contracts/dependencies/openzeppelin/contracts/SafeMath.sol";
+
+contract DummyERC20Impl is IERC20 {
+    using SafeMath for uint256;
+
+    uint256 internal supply;
+    mapping (address => uint256) internal balances;
+    mapping (address => mapping (address => uint256)) allowances;
 
     string public name;
     string public symbol;
     uint public decimals;
 
-    function myAddress() public returns (address) {
-        return address(this);
+    function totalSupply() external view override returns (uint256) {
+        return supply;
     }
-
-    function add(uint a, uint b) internal pure returns (uint256) {
-        uint c = a +b;
-        require (c >= a);
-        return c;
+    function balanceOf(address account) external view override returns (uint256) {
+        return balances[account];
     }
-    function sub(uint a, uint b) internal pure returns (uint256) {
-        require (a>=b);
-        return a-b;
-    }
-
-    function totalSupply() external view returns (uint256) {
-        return t;
-    }
-    function balanceOf(address account) external view returns (uint256) {
-        return b[account];
-    }
-    function transfer(address recipient, uint256 amount) external returns (bool) {
-        b[msg.sender] = sub(b[msg.sender], amount);
-        b[recipient] = add(b[recipient], amount);
+    function transfer(address recipient, uint256 amount) external override returns (bool) {
+        balances[msg.sender] = balances[msg.sender].sub(amount);
+        balances[recipient] = balances[recipient].add(amount);
         return true;
     }
-    function allowance(address owner, address spender) external view returns (uint256) {
-        return a[owner][spender];
+
+    function allowance(address owner, address spender) external view override returns (uint256) {
+        return allowances[owner][spender];
     }
-    function approve(address spender, uint256 amount) external returns (bool) {
-        a[msg.sender][spender] = amount;
+
+    function approve(address spender, uint256 amount) external override returns (bool) {
+        allowances[msg.sender][spender] = amount;
         return true;
     }
 
@@ -48,10 +39,10 @@ contract DummyERC20Impl {
         address sender,
         address recipient,
         uint256 amount
-    ) external returns (bool) {
-        b[sender] = sub(b[sender], amount);
-        b[recipient] = add(b[recipient], amount);
-        a[sender][msg.sender] = sub(a[sender][msg.sender], amount);
+    ) external override returns (bool) {
+        balances[sender] = balances[sender].sub(amount);
+        balances[recipient] = balances[recipient].add(amount);
+        allowances[sender][msg.sender] = allowances[sender][msg.sender].sub(amount);
         return true;
     }
 }
