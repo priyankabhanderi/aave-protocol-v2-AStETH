@@ -1,6 +1,8 @@
 import "./AStETH_summerizations.spec"
 
 using SymbolicLendingPool as LENDING_POOL
+using DummyERC20A as UNDERLYING_ASSET
+using DummyERC20B as RESERVE_TREASURY
 
 methods {    
     
@@ -29,6 +31,8 @@ methods {
  /**************************************************
  *                GHOSTS AND HOOKS                *
  **************************************************/
+
+//  ghost totalSupply
 
 
  /**************************************************
@@ -59,6 +63,27 @@ rule integrityOfMint(address user, uint256 amount, uint256 index) {
     assert amount != 0 => totalSupplyBefore < totalSupplyAfter;
 }
 
+
+rule integrityOfTransferUnderlyingTo(address user, uint256 amount) {
+    env e;
+    // for onlyLendingPool modifier
+    require e.msg.sender == LENDING_POOL;
+    require user != currentContract;
+
+    mathint totalSupplyBefore = totalSupply();
+    mathint userBalanceBefore = balanceOf(user);
+
+    uint256 amountTransfered = transferUnderlyingTo(e, user, amount);
+
+    mathint totalSupplyAfter = totalSupply();
+    mathint userBalanceAfter = balanceOf(user);
+
+    assert userBalanceAfter == userBalanceBefore + amountTransfered;
+    assert false;
+
+}
+
+// solvency invariant for sumall balances <= underlying_asset.balanceOf(Pool)
 
 
 // rule depositAdditivity(address recipient, uint256 amount1, uint256 amount2, uint16 referralCode, bool fromUnderlying) {
