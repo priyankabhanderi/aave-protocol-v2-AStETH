@@ -85,16 +85,31 @@ rule integrityOfTransferUnderlyingTo(address user, uint256 amount) {
 }
 
 
-rule AtokensPeggedToUndeerlyingBurn(address user, uint256 amount, uint256 index, address reciver){
+rule mintBurnReversibility(address user, uint256 amount, uint256 index, address reciver){
     env e;
     // for onlyLendingPool modifier
     require e.msg.sender == LENDING_POOL;
-    uint256 _ATokenBalance = internalBalanceOf(user);
-    uint256 _ATokenTotalSupply = internalTotalSupply();
+    uint256 _ATokenInternalBalance = internalBalanceOf(user);
+    uint256 _ATokenScaledBalance = scaledBalanceOf(user);
+    uint256 _ATokenBalance = balanceOf(user);
+    uint256 _ATokenInternalTotalSupply = internalTotalSupply();
+    uint256 _ATokenScaledTotalSupply = scaledTotalSupply();
+    uint256 _ATokenTotalSupply = totalSupply();
+    
     mint(e, user, amount, index);
     burn(e, user, reciver, amount, index);
-    uint256 ATokenBalance_ = internalBalanceOf(user);
-    uint256 ATokenTotalSupply_ = internalTotalSupply();
+    
+    uint256 ATokenInternalBalance_ = internalBalanceOf(user);
+    uint256 ATokenScaledBalance_ = scaledBalanceOf(user);
+    uint256 ATokenBalance_ = balanceOf(user);
+    uint256 ATokenInternalTotalSupply_ = internalTotalSupply();
+    uint256 ATokenScaledTotalSupply_ = scaledTotalSupply();
+    uint256 ATokenTotalSupply_ = totalSupply();
+    
+    assert _ATokenInternalBalance == ATokenInternalBalance_;
+    assert _ATokenScaledBalance == ATokenScaledBalance_;
     assert _ATokenBalance == ATokenBalance_;
+    assert _ATokenInternalTotalSupply == ATokenInternalTotalSupply_;
+    assert _ATokenScaledTotalSupply == ATokenScaledTotalSupply_;
     assert _ATokenTotalSupply == ATokenTotalSupply_;
 }
