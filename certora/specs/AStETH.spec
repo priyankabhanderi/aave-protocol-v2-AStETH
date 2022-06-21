@@ -90,7 +90,7 @@ rule monotonicityOfMint(address user, uint256 amount, uint256 index) {
 
         }
 
-        mint()
+        burn()
         
         {
             _ATokenInternalBalance > ATokenInternalBalance_ &&
@@ -336,8 +336,7 @@ rule operationAffectMaxTwo(address user1, address user2, address user3)
 	assert (_ATokenInternalBalance1 == ATokenInternalBalance1_ || _ATokenInternalBalance2 == ATokenInternalBalance2_ || _ATokenInternalBalance3 == ATokenInternalBalance3_);
 	assert (_ATokenScaledBalance1 == ATokenScaledBalance1_ || _ATokenScaledBalance2 == ATokenScaledBalance2_ || _ATokenScaledBalance3 == ATokenScaledBalance3_);
 	assert (_ATokenBalance1 == ATokenBalance1_ || _ATokenBalance2 == ATokenBalance2_ || _ATokenBalance3 == ATokenBalance3_);
-    
-    assert false;
+
 }
 
 
