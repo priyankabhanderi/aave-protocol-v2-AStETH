@@ -9,7 +9,6 @@ certoraRun certora/harness/AStETHHarness.sol certora/harness/IncentivesControlle
            --solc solc6.12 \
            --optimistic_loop \
            --settings -smt_nonLinearArithmetic=true \
-           --staging \
-           --rule_sanity \
+           --cloud \
            $RULE \
            --msg "AStETH $RULE $2"
