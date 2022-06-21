@@ -234,59 +234,6 @@ rule aTokenCantAffectUnderlying(){
     @Rule
 
     @Description:
-        Check that the changes to total supply are coherent with the changes to balance
-
-    @Formula:
-        {
-
-        }
-
-        < call any function >
-        
-        {
-
-        }
-
-    @Note:
-
-    @Link:
-*/
-
-rule integrityBalanceOfTotalSupply(address user1, address user2){
-	env e; calldataarg arg; method f;
-    require user1 != user2;
-	
-    mathint _ATokenInternalBalance1 = internalBalanceOf(user1);
-    mathint _ATokenInternalBalance2 = internalBalanceOf(user2);
-    mathint _ATokenScaledBalance1 = scaledBalanceOf(user1);
-    mathint _ATokenScaledBalance2 = scaledBalanceOf(user2);
-    mathint _ATokenBalance1 = balanceOf(user1);
-    mathint _ATokenBalance2 = balanceOf(user2);
-    mathint _ATokenInternalTotalSupply = internalTotalSupply();
-    mathint _ATokenScaledTotalSupply = scaledTotalSupply();
-    mathint _ATokenTotalSupply = totalSupply();
-	 
-	f(e, arg); 
-
-    mathint ATokenInternalBalance1_ = internalBalanceOf(user1);
-    mathint ATokenInternalBalance2_ = internalBalanceOf(user2);
-    mathint ATokenScaledBalance1_ = scaledBalanceOf(user1);
-    mathint ATokenScaledBalance2_ = scaledBalanceOf(user2);
-    mathint ATokenBalance1_ = balanceOf(user1);
-    mathint ATokenBalance2_ = balanceOf(user2);
-    mathint ATokenInternalTotalSupply_ = internalTotalSupply();
-    mathint ATokenScaledTotalSupply_ = scaledTotalSupply();
-    mathint ATokenTotalSupply_ = totalSupply();
-	
-    assert (ATokenInternalBalance1_ - _ATokenInternalBalance1) + (ATokenInternalBalance2_ - _ATokenInternalBalance2)  == (ATokenInternalTotalSupply_ - _ATokenInternalTotalSupply);
-    assert (ATokenScaledBalance1_ - _ATokenScaledBalance1) + (ATokenScaledBalance2_ - _ATokenScaledBalance2)  == (ATokenScaledTotalSupply_ - _ATokenScaledTotalSupply);
-    assert (ATokenBalance1_ - _ATokenBalance1) + (ATokenBalance2_ - _ATokenBalance2)  == (ATokenTotalSupply_ - ATokenTotalSupply_);
-}
-
-/*
-    @Rule
-
-    @Description:
         Check that each possible operation changes the balance of at most two users
 
     @Formula:
@@ -341,6 +288,65 @@ rule operationAffectMaxTwo(address user1, address user2, address user3)
 
 
 
+/*****************************
+ *         UNFINISHED        *
+ *****************************/
+
+
+
+
+/*
+    @Rule
+
+    @Description:
+        Check that the changes to total supply are coherent with the changes to balance
+
+    @Formula:
+        {
+
+        }
+
+        < call any function >
+        
+        {
+
+        }
+
+    @Note:
+
+    @Link:
+*/
+
+rule integrityBalanceOfTotalSupply(address user1, address user2){
+	env e; calldataarg arg; method f;
+    require user1 != user2;
+	
+    mathint _ATokenInternalBalance1 = internalBalanceOf(user1);
+    mathint _ATokenInternalBalance2 = internalBalanceOf(user2);
+    mathint _ATokenScaledBalance1 = scaledBalanceOf(user1);
+    mathint _ATokenScaledBalance2 = scaledBalanceOf(user2);
+    mathint _ATokenBalance1 = balanceOf(user1);
+    mathint _ATokenBalance2 = balanceOf(user2);
+    mathint _ATokenInternalTotalSupply = internalTotalSupply();
+    mathint _ATokenScaledTotalSupply = scaledTotalSupply();
+    mathint _ATokenTotalSupply = totalSupply();
+	 
+	f(e, arg); 
+
+    mathint ATokenInternalBalance1_ = internalBalanceOf(user1);
+    mathint ATokenInternalBalance2_ = internalBalanceOf(user2);
+    mathint ATokenScaledBalance1_ = scaledBalanceOf(user1);
+    mathint ATokenScaledBalance2_ = scaledBalanceOf(user2);
+    mathint ATokenBalance1_ = balanceOf(user1);
+    mathint ATokenBalance2_ = balanceOf(user2);
+    mathint ATokenInternalTotalSupply_ = internalTotalSupply();
+    mathint ATokenScaledTotalSupply_ = scaledTotalSupply();
+    mathint ATokenTotalSupply_ = totalSupply();
+	
+    assert (ATokenInternalBalance1_ - _ATokenInternalBalance1) + (ATokenInternalBalance2_ - _ATokenInternalBalance2)  == (ATokenInternalTotalSupply_ - _ATokenInternalTotalSupply);
+    assert (ATokenScaledBalance1_ - _ATokenScaledBalance1) + (ATokenScaledBalance2_ - _ATokenScaledBalance2)  == (ATokenScaledTotalSupply_ - _ATokenScaledTotalSupply);
+    assert (ATokenBalance1_ - _ATokenBalance1) + (ATokenBalance2_ - _ATokenBalance2)  == (ATokenTotalSupply_ - ATokenTotalSupply_);
+}
 
 /*
     @Rule
