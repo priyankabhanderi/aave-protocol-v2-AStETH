@@ -9,6 +9,10 @@ methods {
     rayDiv(uint256 x, uint256 y ) => identity(x, y);
 }
 
+// Defining an error bar for y. x must be within the declared deviation.
+definition bounded_error_eq(uint x, uint y, uint epsilon) returns bool =
+    x <= y + epsilon && x + epsilon >= y;
+
 // An identity operator - takes 2 vars and always returns the first.
 // Used to simplify computations.
 function identity (uint256 x, uint256 y) returns uint256{

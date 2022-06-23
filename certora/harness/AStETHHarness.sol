@@ -4,6 +4,7 @@ pragma solidity 0.6.12;
 import {AStETH} from "../../contracts/protocol/tokenization/lido/AStETH.sol";
 import {ILendingPool} from "../../contracts/interfaces/ILendingPool.sol";
 import {WadRayMath} from "../../contracts/protocol/libraries/math/WadRayMath.sol";
+import {Address} from "../../contracts/dependencies/openzeppelin/contracts/Address.sol";
 
 contract AStETHHarness is AStETH {
   constructor(
@@ -14,4 +15,9 @@ contract AStETHHarness is AStETH {
     string memory tokenSymbol,
     address incentivesController
   ) public AStETH(pool, underlyingAssetAddress, reserveTreasuryAddress, tokenName, tokenSymbol, incentivesController) {}
+
+  function isContractIsTrue(address account) public view returns (bool){
+      require(Address.isContract(account));
+      return true;
+  }
 }

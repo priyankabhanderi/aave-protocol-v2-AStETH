@@ -22,7 +22,52 @@ methods {
     transferUnderlyingTo(address, uint256) returns (uint256) 
     permit(address, address, uint256, uint256, uint8, bytes32, bytes32) 
 
+    UNDERLYING_ASSET.balanceOf(address) returns (uint256) envfree
+    UNDERLYING_ASSET.totalSupply() returns (uint256) envfree
+
+    // ADDRESS.isContract(address) retrns (bool) envfree
 }
+
+/*
+    @Rule
+
+    @Description:
+        The balance of a reciver in TransferUnderlyingTo() should increase by amount
+        The balance of a sender in TransferUnderlyingTo() should decrease by amount
+
+    @Formula:
+        {
+            user != currentContract;
+        }
+
+        transferUnderlyingTo(user, amount)
+        
+        {
+            userBalanceAfter == userBalanceBefore + amountTransfered;
+            totalSupplyAfter == totalSupplyBefore - amountTransfered;
+        }
+
+    @Note:
+
+    @Link:
+*/
+
+rule integrityOfTransferUnderlyingTo(address user, uint256 amount) {
+    env e;
+    require user != currentContract;
+
+    mathint totalSupplyBefore = UNDERLYING_ASSET.balanceOf(currentContract);
+    mathint userBalanceBefore = UNDERLYING_ASSET.balanceOf(user);
+
+    uint256 amountTransfered = transferUnderlyingTo(e, user, amount);
+
+    mathint totalSupplyAfter = UNDERLYING_ASSET.balanceOf(currentContract);
+    mathint userBalanceAfter = UNDERLYING_ASSET.balanceOf(user);
+
+    assert userBalanceAfter == userBalanceBefore + amountTransfered;
+    assert totalSupplyAfter == totalSupplyBefore - amountTransfered;
+}
+
 
 /*
     @Rule
@@ -117,8 +162,7 @@ rule monotonicityOfBurn(address user, address reciver, uint256 amount, uint256 i
     mathint _ATokenInternalTotalSupply = internalTotalSupply();
     mathint _ATokenScaledTotalSupply = scaledTotalSupply();
     mathint _ATokenTotalSupply = totalSupply();
-    mathint _underlyingReciverBalance = UNDERLYING_ASSET.balanceOf(e, reciver);
-    mathint _underlyingTotalSupply = UNDERLYING_ASSET.totalSupply(e);
+    mathint _underlyingReciverBalance = UNDERLYING_ASSET.balanceOf(reciver);
     
     burn(e, user, reciver, amount, index);
     
@@ -128,8 +172,7 @@ rule monotonicityOfBurn(address user, address reciver, uint256 amount, uint256 i
     mathint ATokenInternalTotalSupply_ = internalTotalSupply();
     mathint ATokenScaledTotalSupply_ = scaledTotalSupply();
     mathint ATokenTotalSupply_ = totalSupply();
-    mathint underlyingReciverBalance_ = UNDERLYING_ASSET.balanceOf(e, reciver);
-    mathint underlyingTotalSupply_ = UNDERLYING_ASSET.totalSupply(e);
+    mathint underlyingReciverBalance_ = UNDERLYING_ASSET.balanceOf(reciver);
     
     
     assert _ATokenInternalBalance > ATokenInternalBalance_;
@@ -223,9 +266,9 @@ rule mintBurnInvertability(address user, uint256 amount, uint256 index, address 
 rule aTokenCantAffectUnderlying(){
     env e; calldataarg args; method f;
 
-    mathint _underlyingTotalSupply = UNDERLYING_ASSET.totalSupply(e);
+    mathint _underlyingTotalSupply = UNDERLYING_ASSET.totalSupply();
     f(e, args);
-    mathint underlyingTotalSupply_ = UNDERLYING_ASSET.totalSupply(e);
+    mathint underlyingTotalSupply_ = UNDERLYING_ASSET.totalSupply();
 
     assert _underlyingTotalSupply == underlyingTotalSupply_;
 }
@@ -287,13 +330,86 @@ rule operationAffectMaxTwo(address user1, address user2, address user3)
 }
 
 
+/*
+    @Rule
+
+    @Description:
+        The totalSupply of AStETH must be backed by underlying asset in the pool
+
+    @Formula:
+        UNDERLYING_ASSET.balanceOf(LENDING_POOL) == totalSupply()
+
+    @Note:
+        Not including the minting functions since mint can only be called through LENDING_POOL after a user deposits UNDERLYING_ASSET.
+        Calling mint from within the contract, without the greater contex will break this invariant.
+
+    @Link:
+*/
+
+invariant atokenPeggedToUnderlying()
+    UNDERLYING_ASSET.balanceOf(LENDING_POOL) >= totalSupply()
+    filtered { f -> f.selector != mint(address ,uint256 ,uint256).selector && f.selector != mintToTreasury(uint256, uint256).selector }
 
 /*****************************
  *         UNFINISHED        *
  *****************************/
 
+/*
+    @Rule
 
+    @Description:
+        Verify conditions in which burn should revert
 
+    @Formula:
+        {
+            user != 0 &&
+		    e.msg.value == 0 &&
+		    e.msg.sender == LENDING_POOL && LENDING_POOL != 0 &&
+		    totalSupply() >= amount &&
+		    to != 0 && 
+		    (UNDERLYING_ASSET.balanceOf(currentContract) > amount  ) &&
+		    UNDERLYING_ASSET.balanceOf(to) + amount < max_uint &&
+		    balanceOf(user) < amount
+        }
+
+        burn@withrevert(e, user, to, amount, index)
+        
+        {
+            !lastReverted
+        }
+
+    @Note:
+
+    @Link:
+*/
+
+rule nonrevertOfBurn(address user, address to, uint256 amount) {
+	env e;
+	uint256 index;
+    uint256 totalSupply = totalSupply();
+    uint256 underlyingAStETHBalance = UNDERLYING_ASSET.balanceOf(currentContract);
+    uint256 underlyingReciverBalance = UNDERLYING_ASSET.balanceOf(to);
+    uint256 AStETHBalance = balanceOf(currentContract);
+    uint256 reciverBalance = balanceOf(to);
+    uint256 senderBalance = balanceOf(user);
+    bool isContract = isContractIsTrue(e, UNDERLYING_ASSET);
+	require (
+		user != 0 && //user is not zero
+		e.msg.value == 0 && //sends assets
+		e.msg.sender == LENDING_POOL && LENDING_POOL != 0 && //sender is Lending pool
+        amount != 0 && //amount is non-zero (for line 109 in AStETH.sol )
+		totalSupply >= amount && //enough total supply is system (for line 214 in IncentivizedERC20.sol )
+		to != 0 && //valid reciever
+		(underlyingAStETHBalance >= amount)  && //enough balance in the underlying asset
+		(AStETHBalance >= amount)  && //enough balance in the underlying asset
+		underlyingReciverBalance + amount <= max_uint && //balance of reviever will not overflow, why not <
+		reciverBalance + amount <= max_uint && //balance of reviever will not overflow, why not <
+		senderBalance >= amount && //user have enough balance (for line 217 in IncentivizedERC20.sol )
+        isContract //underlying asset is a contract
+	 );
+	burn@withrevert(e, user, to, amount, index);
+	assert !lastReverted; 
+}
 
 /*
     @Rule
@@ -346,43 +462,4 @@ rule integrityBalanceOfTotalSupply(address user1, address user2){
     assert (ATokenInternalBalance1_ - _ATokenInternalBalance1) + (ATokenInternalBalance2_ - _ATokenInternalBalance2)  == (ATokenInternalTotalSupply_ - _ATokenInternalTotalSupply);
     assert (ATokenScaledBalance1_ - _ATokenScaledBalance1) + (ATokenScaledBalance2_ - _ATokenScaledBalance2)  == (ATokenScaledTotalSupply_ - _ATokenScaledTotalSupply);
     assert (ATokenBalance1_ - _ATokenBalance1) + (ATokenBalance2_ - _ATokenBalance2)  == (ATokenTotalSupply_ - ATokenTotalSupply_);
-}
-
-/*
-    @Rule
-
-    @Description:
-
-
-    @Formula:
-        {
-
-        }
-
-        < call anhy function >
-        
-        {
-
-        }
-
-    @Note:
-
-    @Link:
-*/
-
-rule integrityOfTransferUnderlyingTo(address user, uint256 amount) {
-    env e;
-    // for onlyLendingPool modifier
-    require e.msg.sender == LENDING_POOL;
-    require user != currentContract;
-
-    mathint totalSupplyBefore = totalSupply();
-    mathint userBalanceBefore = balanceOf(user);
-
-    uint256 amountTransfered = transferUnderlyingTo(e, user, amount);
-
-    mathint totalSupplyAfter = totalSupply();
-    mathint userBalanceAfter = balanceOf(user);
-
-    assert userBalanceAfter == userBalanceBefore + amountTransfered;
 }
