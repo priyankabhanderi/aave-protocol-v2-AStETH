@@ -22,10 +22,13 @@ methods {
     transferUnderlyingTo(address, uint256) returns (uint256) 
     permit(address, address, uint256, uint256, uint8, bytes32, bytes32) 
 
+    isContractIsTrue(address) returns (bool) envfree
+
     UNDERLYING_ASSET.balanceOf(address) returns (uint256) envfree
     UNDERLYING_ASSET.totalSupply() returns (uint256) envfree
 
-    // ADDRESS.isContract(address) retrns (bool) envfree
+    LENDING_POOL.aToken() returns (address) envfree
+
 }
 
 /*
@@ -334,7 +337,7 @@ rule operationAffectMaxTwo(address user1, address user2, address user3)
     @Rule
 
     @Description:
-        The totalSupply of AStETH must be backed by underlying asset in the pool
+        The totalSupply of AStETH must be backed by underlying asset in the contract
 
     @Formula:
         UNDERLYING_ASSET.balanceOf(LENDING_POOL) == totalSupply()
@@ -344,11 +347,56 @@ rule operationAffectMaxTwo(address user1, address user2, address user3)
         Calling mint from within the contract, without the greater contex will break this invariant.
 
     @Link:
+
 */
 
-invariant atokenPeggedToUnderlying()
-    UNDERLYING_ASSET.balanceOf(LENDING_POOL) >= totalSupply()
-    filtered { f -> f.selector != mint(address ,uint256 ,uint256).selector && f.selector != mintToTreasury(uint256, uint256).selector }
+invariant atokenPeggedToUnderlying(env e)
+    UNDERLYING_ASSET.balanceOf(currentContract) >= totalSupply()
+    filtered { f -> f.selector != mint(address ,uint256 ,uint256).selector &&
+                    f.selector != mintToTreasury(uint256, uint256).selector }
+    {
+        preserved with (env e2) {
+            require currentContract != LENDING_POOL;
+        }
+    }
+
+/*
+    @Rule
+
+    @Description:
+        Checks that the totalSupply of AStETH must be backed by underlying asset in the contract when deposit is called (and hence mint)
+
+    @Formula:
+        {
+            _underlyingBalance >= _aTokenTotalSupply
+        }
+
+        LENDING_POOL.deposit(UNDERLYING_ASSET, amount, user, referralCode);
+
+        {
+            underlyingBalance_ >= aTokenTotalSupply_
+        }
+
+    @Note:
+
+    @Link:
+    
+*/
+
+rule atokenPeggedToUnderlyingMint(env e, uint256 amount, address user, uint16 referralCode){
+    mathint _underlyingBalance = UNDERLYING_ASSET.balanceOf(currentContract);
+    mathint _aTokenTotalSupply = totalSupply();
+
+    require _underlyingBalance >= _aTokenTotalSupply;
+    require LENDING_POOL.aToken() == currentContract;
+    
+    LENDING_POOL.deposit(e, UNDERLYING_ASSET, amount, user, referralCode);
+    
+    mathint underlyingBalance_ = UNDERLYING_ASSET.balanceOf(currentContract);
+    mathint aTokenTotalSupply_ = totalSupply();
+
+    assert underlyingBalance_ >= aTokenTotalSupply_;
+}
 
 /*****************************
  *         UNFINISHED        *
@@ -392,7 +440,7 @@ rule nonrevertOfBurn(address user, address to, uint256 amount) {
     uint256 AStETHBalance = balanceOf(currentContract);
     uint256 reciverBalance = balanceOf(to);
     uint256 senderBalance = balanceOf(user);
-    bool isContract = isContractIsTrue(e, UNDERLYING_ASSET);
+    bool isContract = isContractIsTrue(UNDERLYING_ASSET);
 	require (
 		user != 0 && //user is not zero
 		e.msg.value == 0 && //sends assets
