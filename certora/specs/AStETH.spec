@@ -352,6 +352,7 @@ rule operationAffectMaxTwo(address user1, address user2, address user3)
 
 invariant atokenPeggedToUnderlying(env e)
     UNDERLYING_ASSET.balanceOf(currentContract) >= totalSupply()
+    
     filtered { f -> f.selector != mint(address ,uint256 ,uint256).selector &&
                     f.selector != mintToTreasury(uint256, uint256).selector }
     {
