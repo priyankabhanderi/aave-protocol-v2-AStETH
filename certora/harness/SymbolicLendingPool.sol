@@ -37,7 +37,7 @@ contract SymbolicLendingPool  {
     IAToken(aToken).burn(msg.sender, to, amount, liquidityIndex);
     return amount;
   }
-
+  
   function getReserveNormalizedIncome(address asset)
     external
     view

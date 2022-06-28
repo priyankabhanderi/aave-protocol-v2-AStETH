@@ -23,3 +23,15 @@ function identity (uint256 x, uint256 y) returns uint256{
 function returnAmount(uint256 amount, uint256 stEthRebasingIndex, uint256 aaveLiquidityIndex) returns uint256 {
     return amount;
 }
+
+// Ghost tracking the sum of users' balances in the contract
+ghost totalsGhost() returns uint256 {
+    init_state axiom totalsGhost() == 0;
+}
+
+// Updates the totalsGhost on every write to the storage var _balances
+hook Sstore _balances[KEY address account] uint256 newBalance
+    (uint256 oldBalance) STORAGE
+{
+    havoc totalsGhost assuming totalsGhost@new() == totalsGhost@old() + (newBalance - oldBalance);
+}

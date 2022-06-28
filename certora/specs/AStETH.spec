@@ -71,7 +71,6 @@ rule integrityOfTransferUnderlyingTo(address user, uint256 amount) {
     assert totalSupplyAfter == totalSupplyBefore - amountTransfered;
 }
 
-
 /*
     @Rule
 
@@ -332,40 +331,75 @@ rule operationAffectMaxTwo(address user1, address user2, address user3)
 
 }
 
-
 /*
     @Rule
 
     @Description:
-        The totalSupply of AStETH must be backed by underlying asset in the contract
+        Check that the changes to total supply are coherent with the changes to balance
 
     @Formula:
-        UNDERLYING_ASSET.balanceOf(LENDING_POOL) == totalSupply()
+        {
+
+        }
+
+        < call any function >
+        
+        {
+            ((ATokenInternalBalance1_ != _ATokenInternalBalance1) && (ATokenInternalBalance2_ != _ATokenInternalBalance2)) =>
+            (ATokenInternalBalance1_ - _ATokenInternalBalance1) + (ATokenInternalBalance2_ - _ATokenInternalBalance2)  == (ATokenInternalTotalSupply_ - _ATokenInternalTotalSupply);
+            
+            ((ATokenScaledBalance1_ != _ATokenScaledBalance1) && (ATokenScaledBalance2_ != _ATokenScaledBalance2)) =>
+            (ATokenScaledBalance1_ - _ATokenScaledBalance1) + (ATokenScaledBalance2_ - _ATokenScaledBalance2)  == (ATokenScaledTotalSupply_ - _ATokenScaledTotalSupply);
+            
+            ((ATokenBalance1_ != _ATokenBalance1) && (ATokenBalance2_ != _ATokenBalance2)) =>
+            (ATokenBalance1_ - _ATokenBalance1) + (ATokenBalance2_ - _ATokenBalance2)  == (ATokenTotalSupply_ - ATokenTotalSupply_);
+        }
 
     @Note:
-        Not including the minting functions since mint can only be called through LENDING_POOL after a user deposits UNDERLYING_ASSET.
-        Calling mint from within the contract, without the greater contex will break this invariant.
 
     @Link:
-
 */
 
-invariant atokenPeggedToUnderlying(env e)
-    UNDERLYING_ASSET.balanceOf(currentContract) >= totalSupply()
-    
-    filtered { f -> f.selector != mint(address ,uint256 ,uint256).selector &&
-                    f.selector != mintToTreasury(uint256, uint256).selector }
-    {
-        preserved with (env e2) {
-            require currentContract != LENDING_POOL;
-        }
-    }
+rule integrityBalanceOfTotalSupply(address user1, address user2){
+	env e; calldataarg arg; method f;
+    require user1 != user2;
+	
+    mathint _ATokenInternalBalance1 = internalBalanceOf(user1);
+    mathint _ATokenInternalBalance2 = internalBalanceOf(user2);
+    mathint _ATokenScaledBalance1 = scaledBalanceOf(user1);
+    mathint _ATokenScaledBalance2 = scaledBalanceOf(user2);
+    mathint _ATokenBalance1 = balanceOf(user1);
+    mathint _ATokenBalance2 = balanceOf(user2);
+    mathint _ATokenInternalTotalSupply = internalTotalSupply();
+    mathint _ATokenScaledTotalSupply = scaledTotalSupply();
+    mathint _ATokenTotalSupply = totalSupply();
+	 
+	f(e, arg); 
+
+    mathint ATokenInternalBalance1_ = internalBalanceOf(user1);
+    mathint ATokenInternalBalance2_ = internalBalanceOf(user2);
+    mathint ATokenScaledBalance1_ = scaledBalanceOf(user1);
+    mathint ATokenScaledBalance2_ = scaledBalanceOf(user2);
+    mathint ATokenBalance1_ = balanceOf(user1);
+    mathint ATokenBalance2_ = balanceOf(user2);
+    mathint ATokenInternalTotalSupply_ = internalTotalSupply();
+    mathint ATokenScaledTotalSupply_ = scaledTotalSupply();
+    mathint ATokenTotalSupply_ = totalSupply();
+
+    assert ((ATokenInternalBalance1_ != _ATokenInternalBalance1) && (ATokenInternalBalance2_ != _ATokenInternalBalance2)) =>
+            (ATokenInternalBalance1_ - _ATokenInternalBalance1) + (ATokenInternalBalance2_ - _ATokenInternalBalance2)  == (ATokenInternalTotalSupply_ - _ATokenInternalTotalSupply);
+    assert ((ATokenScaledBalance1_ != _ATokenScaledBalance1) && (ATokenScaledBalance2_ != _ATokenScaledBalance2)) =>
+            (ATokenScaledBalance1_ - _ATokenScaledBalance1) + (ATokenScaledBalance2_ - _ATokenScaledBalance2)  == (ATokenScaledTotalSupply_ - _ATokenScaledTotalSupply);
+    assert ((ATokenBalance1_ != _ATokenBalance1) && (ATokenBalance2_ != _ATokenBalance2)) =>
+            (ATokenBalance1_ - _ATokenBalance1) + (ATokenBalance2_ - _ATokenBalance2)  == (ATokenTotalSupply_ - ATokenTotalSupply_);
+}
 
 /*
     @Rule
 
     @Description:
         Checks that the totalSupply of AStETH must be backed by underlying asset in the contract when deposit is called (and hence mint)
+        Checks that the totalSupply of AStETH must be backed by underlying asset in the contract when withdraw is called (and hence burn)
 
     @Formula:
         {
@@ -373,9 +407,11 @@ invariant atokenPeggedToUnderlying(env e)
         }
 
         LENDING_POOL.deposit(UNDERLYING_ASSET, amount, user, referralCode);
+                                    OR
+        LENDING_POOL.withdraw(e, UNDERLYING_ASSET, amount, user);
 
         {
-            underlyingBalance_ >= aTokenTotalSupply_
+            msg.sender != currentContract => underlyingBalance_ >= aTokenTotalSupply_
         }
 
     @Note:
@@ -384,20 +420,88 @@ invariant atokenPeggedToUnderlying(env e)
     
 */
 
-rule atokenPeggedToUnderlyingMint(env e, uint256 amount, address user, uint16 referralCode){
+rule atokenPeggedToUnderlying(env e, uint256 amount, address user, uint16 referralCode){
+    uint8 case;
     mathint _underlyingBalance = UNDERLYING_ASSET.balanceOf(currentContract);
     mathint _aTokenTotalSupply = totalSupply();
 
     require _underlyingBalance >= _aTokenTotalSupply;
     require LENDING_POOL.aToken() == currentContract;
     
-    LENDING_POOL.deposit(e, UNDERLYING_ASSET, amount, user, referralCode);
+    if (case == 0){
+        LENDING_POOL.deposit(e, UNDERLYING_ASSET, amount, user, referralCode);
+    }
+    else if (case == 1){
+        LENDING_POOL.withdraw(e, UNDERLYING_ASSET, amount, user);
+    }
+    // else if (case == 2){
+    //     LENDING_POOL.borrow(e, UNDERLYING_ASSET, amount, user);
+    // }
+    // else if (case == 3){
+    //     LENDING_POOL.flashLoan(e, UNDERLYING_ASSET, amount, user);
+    // }
     
     mathint underlyingBalance_ = UNDERLYING_ASSET.balanceOf(currentContract);
     mathint aTokenTotalSupply_ = totalSupply();
 
-    assert underlyingBalance_ >= aTokenTotalSupply_;
+    // Here the LHS of the implication is vital since a case where AStETH calls deposit will cause the backing token to be unchanged while Atokens will be minted.
+    // This LHS demand is fine since AStETH cannot actively call deposit from lending pool, nor there is an `execute` method that allows calling methods externally from other contracts.
+    assert e.msg.sender != currentContract => underlyingBalance_ >= aTokenTotalSupply_;
 }
+
+/*
+    @Rule
+
+    @Description:ֿ
+        The AStETH totalSupply, tracked by the contract, is the sum of AStETH balances across all users.
+
+    @Formula:
+        totalsGhost() == internalTotalSupply()
+
+    @Note:
+
+    @Link:
+    
+*/
+
+invariant totalSupplyIsSumOfBalances()
+    totalsGhost() == internalTotalSupply()
+
+/*
+    @Rule
+
+    @Description:ֿ
+        The AStETH balance of a single user is less or equal to the total supply
+
+    @Formula:
+        totalsGhost() >= internalBalanceOf(user)
+
+    @Note: 
+        For every function that implements a transfer between 2 users within the system, we required that the sum of balances of the 2 users start as less than the totalSupply.
+        
+
+    @Link:
+    
+*/
+
+invariant totalSupplyGESingleUserBalance(address user, env e)
+    totalsGhost() >= internalBalanceOf(user)
+    {
+        preserved transferFrom(address spender, address reciever, uint256 amount) with (env e2) {
+            require internalBalanceOf(user) + internalBalanceOf(spender) <= totalsGhost();
+        }
+        preserved transfer(address reciever, uint256 amount) with (env e3) {
+            require e3.msg.sender == e.msg.sender;
+            require internalBalanceOf(user) + internalBalanceOf(e3.msg.sender) <= totalsGhost();
+        }
+        preserved transferOnLiquidation(address from, address to, uint256 amount) with (env e4) {
+            require internalBalanceOf(user) + internalBalanceOf(from) <= totalsGhost(); 
+        }
+        preserved burn(address owner, address recieverUnderlying, uint256 amount, uint256 index)  with (env e5) {
+            require internalBalanceOf(user) + internalBalanceOf(owner) <= totalsGhost(); 
+        }
+    }
+
 
 /*****************************
  *         UNFINISHED        *
@@ -458,57 +562,4 @@ rule nonrevertOfBurn(address user, address to, uint256 amount) {
 	 );
 	burn@withrevert(e, user, to, amount, index);
 	assert !lastReverted; 
-}
-
-/*
-    @Rule
-
-    @Description:
-        Check that the changes to total supply are coherent with the changes to balance
-
-    @Formula:
-        {
-
-        }
-
-        < call any function >
-        
-        {
-
-        }
-
-    @Note:
-
-    @Link:
-*/
-
-rule integrityBalanceOfTotalSupply(address user1, address user2){
-	env e; calldataarg arg; method f;
-    require user1 != user2;
-	
-    mathint _ATokenInternalBalance1 = internalBalanceOf(user1);
-    mathint _ATokenInternalBalance2 = internalBalanceOf(user2);
-    mathint _ATokenScaledBalance1 = scaledBalanceOf(user1);
-    mathint _ATokenScaledBalance2 = scaledBalanceOf(user2);
-    mathint _ATokenBalance1 = balanceOf(user1);
-    mathint _ATokenBalance2 = balanceOf(user2);
-    mathint _ATokenInternalTotalSupply = internalTotalSupply();
-    mathint _ATokenScaledTotalSupply = scaledTotalSupply();
-    mathint _ATokenTotalSupply = totalSupply();
-	 
-	f(e, arg); 
-
-    mathint ATokenInternalBalance1_ = internalBalanceOf(user1);
-    mathint ATokenInternalBalance2_ = internalBalanceOf(user2);
-    mathint ATokenScaledBalance1_ = scaledBalanceOf(user1);
-    mathint ATokenScaledBalance2_ = scaledBalanceOf(user2);
-    mathint ATokenBalance1_ = balanceOf(user1);
-    mathint ATokenBalance2_ = balanceOf(user2);
-    mathint ATokenInternalTotalSupply_ = internalTotalSupply();
-    mathint ATokenScaledTotalSupply_ = scaledTotalSupply();
-    mathint ATokenTotalSupply_ = totalSupply();
-	
-    assert (ATokenInternalBalance1_ - _ATokenInternalBalance1) + (ATokenInternalBalance2_ - _ATokenInternalBalance2)  == (ATokenInternalTotalSupply_ - _ATokenInternalTotalSupply);
-    assert (ATokenScaledBalance1_ - _ATokenScaledBalance1) + (ATokenScaledBalance2_ - _ATokenScaledBalance2)  == (ATokenScaledTotalSupply_ - _ATokenScaledTotalSupply);
-    assert (ATokenBalance1_ - _ATokenBalance1) + (ATokenBalance2_ - _ATokenBalance2)  == (ATokenTotalSupply_ - ATokenTotalSupply_);
 }

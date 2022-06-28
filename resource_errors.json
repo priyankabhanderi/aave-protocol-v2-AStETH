@@ -1,13 +1,3 @@
 {
-    "topics": [
-        {
-            "name": "solc",
-            "messages": [
-                {
-                    "message": "/Users/pitanjenny/Work/AAVE-Continues/aave-protocol-v2-AStETH/certora/harness/DummyERC20Impl.sol:14:26: ParserError: Function, variable, struct or modifier declaration expected.",
-                    "location": []
-                }
-            ]
-        }
-    ]
+    "topics": []
 }
